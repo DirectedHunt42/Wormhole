@@ -508,8 +508,8 @@ def open_images_window(master):
 
     ico_frame = ctk.CTkFrame(img_win, fg_color=BG)
     ico_label = ctk.CTkLabel(ico_frame, text="Select ICO sizes:", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
-    ico_label.pack(pady=5)
-    sizes = [16, 32, 48, 64, 128, 256]
+    ico_label.pack(pady=10)
+    sizes = [16, 24, 32, 40, 48, 64, 128, 256]
     check_vars = [ctk.BooleanVar(value=True) for _ in sizes]  # Default checked
     for i, s in enumerate(sizes):
         cb = ctk.CTkCheckBox(ico_frame, text=f"{s}x{s}", variable=check_vars[i])
@@ -518,13 +518,13 @@ def open_images_window(master):
     def update_ico_frame(event=None):
         if target_var.get() == "ICO":
             ico_frame.pack(pady=5)
-            img_win.geometry("300x600")
+            img_win.geometry("300x450")
         else:
             ico_frame.pack_forget()
-            img_win.geometry("300x450")
+            img_win.geometry("300x300")
         img_win.update_idletasks()
 
-    combo.bind("<<ComboboxSelected>>", update_ico_frame)
+    combo.configure(command=lambda choice: update_ico_frame())
 
     progress_bar = ctk.CTkProgressBar(img_win, width=250, mode="indeterminate")
     # Initially not packed
@@ -561,8 +561,8 @@ def open_images_window(master):
                     if not selected_sizes:
                         img_win.after(0, lambda: messagebox.showerror("Error", "Select at least one size for ICO"))
                         return
-                    icon_images = [img.resize((s, s), Image.LANCZOS) for s in selected_sizes]
-                    icon_images[0].save(new_file_path, format='ICO', append_images=icon_images[1:] if len(icon_images) > 1 else [])
+                    selected_tuples = [(s, s) for s in selected_sizes]
+                    img.save(new_file_path, format='ICO', sizes=selected_tuples, bitmap_format="bmp")
                 elif target == "BMP":
                     img.save(new_file_path, 'BMP')
                 elif target == "GIF":
