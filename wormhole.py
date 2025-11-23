@@ -19,13 +19,22 @@ ACCENT = "#7aa3ff"
 ACCENT_DIM = "#4d6bbc"
 TEXT = "#e8e6f5"
 
+WORMHOLE_IMAGE_PATH = os.path.join("Icons", "wormhole_Transparent_Light.png")
+try:
+    WORMHOLE_PIL_IMAGE = Image.open(WORMHOLE_IMAGE_PATH)
+except Exception as e:
+    print(f"Could not load wormhole image: {e}")
+    WORMHOLE_PIL_IMAGE = Image.new("RGBA", (100, 100), (100, 100, 100, 255))
+
+APP_ICON_PATH = os.path.join("Icons", "Wormhole_Icon.ico")
+
 # Paths for custom fonts (adjust family and file names if needed; assumes Roboto as example)
 FONTS_DIR = "fonts"
 FONT_FAMILY_REGULAR = "Pathway Extreme 36pt Regular"
 FONT_FAMILY_SEMIBOLD = "Pathway Extreme 36pt SemiBold"
-FONT_FAMILY_ITALIC = "Pathway Extreme 36pt Italic"  # Example for future use
-FONT_FAMILY_THIN = "Pathway Extreme 36pt Thin"  # Example for future use
-FONT_FAMILY_BLACK = "Pathway Extreme 36pt Black"  # Example for future use
+FONT_FAMILY_ITALIC = "Pathway Extreme 36pt Italic"
+FONT_FAMILY_THIN = "Pathway Extreme 36pt Thin"
+FONT_FAMILY_BLACK = "Pathway Extreme 36pt Black"
 FONT_FILES = [
     "PathwayExtreme_36pt-Black.ttf",
     "PathwayExtreme_36pt-Italic.ttf",
@@ -50,42 +59,55 @@ class WormholeApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Wormhole File Converter")
-        self.geometry("400x400")
+        self.geometry("400x650")
         self.configure(fg_color=BG)
         # Center the main window
         self.update_idletasks()
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
         x = (screen_width // 2) - (400 // 2)
-        y = (screen_height // 2) - (400 // 2)
-        self.geometry(f"400x400+{x}+{y}")
+        y = (screen_height // 2) - (650 // 2)
+        self.geometry(f"400x650+{x}+{y}")
         self._build_ui()
 
     def _build_ui(self):
+        if os.path.exists(APP_ICON_PATH):
+            try:
+                if sys.platform.startswith('win'):
+                    import ctypes
+                    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("wormhole.file.converter")
+                self.iconbitmap(APP_ICON_PATH)
+            except Exception as e:
+                print(f"Could not set application icon: {e}")
+                
         # Custom label for instructions
+        image = ctk.CTkImage(light_image=WORMHOLE_PIL_IMAGE, dark_image=WORMHOLE_PIL_IMAGE, size=(306, 204))
+        img_label = ctk.CTkLabel(self, image=image, text="", fg_color=BG)
+        img_label.pack(pady=10)
+
         label = ctk.CTkLabel(self, text="Select a file type category:", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 12))
         label.pack(pady=20)
 
         # Buttons for each category (using semibold for buttons if desired; otherwise keep normal)
-        btn_docs = ctk.CTkButton(self, text="Docs", command=self.open_docs_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 10))
+        btn_docs = ctk.CTkButton(self, text="Docs", command=self.open_docs_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_docs.pack(pady=5)
 
-        btn_presentations = ctk.CTkButton(self, text="Presentations", command=self.open_presentations_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 10))
+        btn_presentations = ctk.CTkButton(self, text="Presentations", command=self.open_presentations_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_presentations.pack(pady=5)
 
-        btn_images = ctk.CTkButton(self, text="Images", command=self.open_images_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 10))
+        btn_images = ctk.CTkButton(self, text="Images", command=self.open_images_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_images.pack(pady=5)
 
-        btn_videos = ctk.CTkButton(self, text="Videos", command=self.open_videos_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 10))
+        btn_videos = ctk.CTkButton(self, text="Videos", command=self.open_videos_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_videos.pack(pady=5)
 
-        btn_audio = ctk.CTkButton(self, text="Audio", command=self.open_audio_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 10))
+        btn_audio = ctk.CTkButton(self, text="Audio", command=self.open_audio_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_audio.pack(pady=5)
 
-        btn_archive = ctk.CTkButton(self, text="Archive", command=self.open_archive_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 10))
+        btn_archive = ctk.CTkButton(self, text="Archive", command=self.open_archive_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_archive.pack(pady=5)
 
-        btn_other = ctk.CTkButton(self, text="Other", command=self.open_other_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 10))
+        btn_other = ctk.CTkButton(self, text="Other", command=self.open_other_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_other.pack(pady=5)
 
 # Distinctly labeled defs for each converter
