@@ -11,6 +11,18 @@ import zipfile
 import tarfile
 import tempfile
 import shutil
+import threading
+from docx import Document
+from bs4 import BeautifulSoup
+from pptx import Presentation
+from pptx.util import Inches
+import openpyxl
+import csv
+try:
+    from striprtf.striprtf import rtf_to_text
+    RTF_SUPPORT = True
+except ImportError:
+    RTF_SUPPORT = False
 
 BG = "#0a0812"
 CARD = "#120f1e"
@@ -109,15 +121,15 @@ class WormholeApp(ctk.CTk):
 def open_docs_window(master):
     docs_win = ctk.CTkToplevel(master)
     docs_win.title("Docs Conversions")
-    docs_win.geometry("300x250")
+    docs_win.geometry("300x300")
     docs_win.configure(fg_color=BG)
     # Center the window
     docs_win.update_idletasks()
     screen_width = docs_win.winfo_screenwidth()
     screen_height = docs_win.winfo_screenheight()
     x = (screen_width // 2) - (300 // 2)
-    y = (screen_height // 2) - (250 // 2)
-    docs_win.geometry(f"300x250+{x}+{y}")
+    y = (screen_height // 2) - (300 // 2)
+    docs_win.geometry(f"300x300+{x}+{y}")
     # Set icon
     if os.path.exists(APP_ICON_PATH):
         try:
@@ -133,8 +145,12 @@ def open_docs_window(master):
 
     file_path_var = ctk.StringVar(value="")
 
+    filetypes = [("Docs files", "*.txt;*.pdf;*.docx;*.html;*.md")]
+    if RTF_SUPPORT:
+        filetypes[0] = ("Docs files", "*.txt;*.pdf;*.docx;*.html;*.md;*.rtf")
+
     def select_file():
-        fp = filedialog.askopenfilename(title="Select Docs File", filetypes=[("Docs files", "*.txt;*.pdf")])
+        fp = filedialog.askopenfilename(title="Select Docs File", filetypes=filetypes)
         if fp:
             file_path_var.set(fp)
             file_label.configure(text=os.path.basename(fp))
@@ -146,46 +162,94 @@ def open_docs_window(master):
     file_label.pack(pady=5)
 
     target_var = ctk.StringVar(value="PDF")
-    combo = ctk.CTkComboBox(docs_win, values=["PDF", "TXT"], variable=target_var, font=(FONT_FAMILY_REGULAR, 10), width=250)
+    combo_values = ["PDF", "TXT", "DOCX", "HTML", "MD"]
+    if RTF_SUPPORT:
+        combo_values.append("RTF")
+    combo = ctk.CTkComboBox(docs_win, values=combo_values, variable=target_var, font=(FONT_FAMILY_REGULAR, 10), width=250)
     combo.pack(pady=5)
+
+    progress_bar = ctk.CTkProgressBar(docs_win, width=250, mode="indeterminate")
+    # Initially not packed
 
     def do_convert():
         fp = file_path_var.get()
         if not fp:
             messagebox.showerror("Error", "No file selected")
             return
-        target = target_var.get().lower()
+        target = target_var.get().upper()
         input_ext = os.path.splitext(fp)[1].lower()[1:]
-        if target == input_ext:
+        if target.lower() == input_ext:
             messagebox.showwarning("Warning", "Input and output formats are the same")
             return
-        new_file_path = os.path.splitext(fp)[0] + '.' + target
-        try:
-            if input_ext == "txt" and target == "pdf":
-                c = canvas.Canvas(new_file_path, pagesize=letter)
-                width, height = letter
-                y = height - 50  # Start from top with margin
-                with open(fp, 'r') as f:
-                    for line in f:
+        new_file_path = os.path.splitext(fp)[0] + '.' + target.lower()
+
+        def conversion_thread():
+            try:
+                text = ""
+                if input_ext in ["txt", "md"]:
+                    with open(fp, 'r') as f:
+                        text = f.read()
+                elif input_ext == "pdf":
+                    reader = PdfReader(fp)
+                    text = ''
+                    for page in reader.pages:
+                        text += page.extract_text() + '\n'
+                elif input_ext == "docx":
+                    doc = Document(fp)
+                    text = '\n'.join([para.text for para in doc.paragraphs])
+                elif input_ext == "html":
+                    with open(fp, 'r') as f:
+                        soup = BeautifulSoup(f.read(), 'html.parser')
+                        text = soup.get_text()
+                elif input_ext == "rtf" and RTF_SUPPORT:
+                    with open(fp, 'r') as f:
+                        rtf = f.read()
+                    text = rtf_to_text(rtf)
+                else:
+                    docs_win.after(0, lambda: messagebox.showerror("Error", "Unsupported input format"))
+                    return
+
+                if target in ["TXT", "MD"]:
+                    with open(new_file_path, 'w') as f:
+                        f.write(text)
+                elif target == "PDF":
+                    c = canvas.Canvas(new_file_path, pagesize=letter)
+                    width, height = letter
+                    y = height - 50  # Start from top with margin
+                    for line in text.splitlines():
                         c.drawString(50, y, line.strip())
                         y -= 15  # Line spacing
                         if y < 50:  # Simple page break handling
                             c.showPage()
                             y = height - 50
-                c.save()
-            elif input_ext == "pdf" and target == "txt":
-                reader = PdfReader(fp)
-                text = ''
-                for page in reader.pages:
-                    text += page.extract_text() + '\n'
-                with open(new_file_path, 'w') as f:
-                    f.write(text)
-            else:
-                messagebox.showerror("Error", "Unsupported conversion")
-                return
-            messagebox.showinfo("Success", f"File converted to: {new_file_path}")
-        except Exception as e:
-            messagebox.showerror("Error", f"Conversion failed: {str(e)}")
+                    c.save()
+                elif target == "DOCX":
+                    doc = Document()
+                    doc.add_paragraph(text)
+                    doc.save(new_file_path)
+                elif target == "HTML":
+                    with open(new_file_path, 'w') as f:
+                        escaped_text = text.replace('<', '&lt;').replace('>', '&gt;')
+                        f.write(f"<html><body><pre>{escaped_text}</pre></body></html>")
+                elif target == "RTF" and RTF_SUPPORT:
+                    docs_win.after(0, lambda: messagebox.showerror("Error", "RTF output not supported"))
+                    return
+                else:
+                    docs_win.after(0, lambda: messagebox.showerror("Error", "Unsupported target format"))
+                    return
+                docs_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
+            except Exception as e:
+                docs_win.after(0, lambda: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
+            finally:
+                docs_win.after(0, progress_bar.stop)
+                docs_win.after(0, progress_bar.pack_forget)
+                docs_win.after(0, lambda: btn_convert.configure(state="normal"))
+
+        progress_bar.pack(pady=5)
+        progress_bar.start()
+        btn_convert.configure(state="disabled")
+        thread = threading.Thread(target=conversion_thread)
+        thread.start()
 
     btn_convert = ctk.CTkButton(docs_win, text="Convert", command=do_convert, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
     btn_convert.pack(pady=5)
@@ -193,15 +257,15 @@ def open_docs_window(master):
 def open_presentations_window(master):
     pres_win = ctk.CTkToplevel(master)
     pres_win.title("Presentations Conversions")
-    pres_win.geometry("300x200")
+    pres_win.geometry("300x300")
     pres_win.configure(fg_color=BG)
     # Center the window
     pres_win.update_idletasks()
     screen_width = pres_win.winfo_screenwidth()
     screen_height = pres_win.winfo_screenheight()
     x = (screen_width // 2) - (300 // 2)
-    y = (screen_height // 2) - (200 // 2)
-    pres_win.geometry(f"300x200+{x}+{y}")
+    y = (screen_height // 2) - (300 // 2)
+    pres_win.geometry(f"300x300+{x}+{y}")
     # Set icon
     if os.path.exists(APP_ICON_PATH):
         try:
@@ -212,21 +276,119 @@ def open_presentations_window(master):
     pres_win.transient(master)
     pres_win.grab_set()
 
-    label = ctk.CTkLabel(pres_win, text="Presentations conversions coming soon!", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 12))
+    label = ctk.CTkLabel(pres_win, text="Presentations Converter", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 12))
     label.pack(pady=10)
+
+    file_path_var = ctk.StringVar(value="")
+
+    def select_file():
+        fp = filedialog.askopenfilename(title="Select Presentation File", filetypes=[("Presentation files", "*.pptx")])
+        if fp:
+            file_path_var.set(fp)
+            file_label.configure(text=os.path.basename(fp))
+
+    btn_select = ctk.CTkButton(pres_win, text="Select File", command=select_file, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
+    btn_select.pack(pady=5)
+
+    file_label = ctk.CTkLabel(pres_win, text="No file selected", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
+    file_label.pack(pady=5)
+
+    target_var = ctk.StringVar(value="PDF")
+    combo = ctk.CTkComboBox(pres_win, values=["PPTX", "PDF", "TXT", "DOCX"], variable=target_var, font=(FONT_FAMILY_REGULAR, 10), width=250)
+    combo.pack(pady=5)
+
+    progress_bar = ctk.CTkProgressBar(pres_win, width=250, mode="indeterminate")
+    # Initially not packed
+
+    def do_convert():
+        fp = file_path_var.get()
+        if not fp:
+            messagebox.showerror("Error", "No file selected")
+            return
+        target = target_var.get().upper()
+        input_ext = os.path.splitext(fp)[1].lower()[1:]
+        if target.lower() == input_ext:
+            messagebox.showwarning("Warning", "Input and output formats are the same")
+            return
+        new_file_path = os.path.splitext(fp)[0] + '.' + target.lower()
+
+        def conversion_thread():
+            try:
+                text = ""
+                if input_ext == "pptx":
+                    pres = Presentation(fp)
+                    text = ''
+                    for slide in pres.slides:
+                        for shape in slide.shapes:
+                            if shape.has_text_frame:
+                                for paragraph in shape.text_frame.paragraphs:
+                                    for run in paragraph.runs:
+                                        text += run.text
+                                    text += '\n'
+                else:
+                    pres_win.after(0, lambda: messagebox.showerror("Error", "Unsupported input format"))
+                    return
+
+                if target == "TXT":
+                    with open(new_file_path, 'w') as f:
+                        f.write(text)
+                elif target == "PDF":
+                    c = canvas.Canvas(new_file_path, pagesize=letter)
+                    width, height = letter
+                    y = height - 50  # Start from top with margin
+                    for line in text.splitlines():
+                        c.drawString(50, y, line.strip())
+                        y -= 15  # Line spacing
+                        if y < 50:  # Simple page break handling
+                            c.showPage()
+                            y = height - 50
+                    c.save()
+                elif target == "DOCX":
+                    doc = Document()
+                    doc.add_paragraph(text)
+                    doc.save(new_file_path)
+                elif target == "PPTX":
+                    pres = Presentation()
+                    slide_layout = pres.slide_layouts[0]
+                    slide = pres.slides.add_slide(slide_layout)
+                    left = top = Inches(1)
+                    width = height = Inches(6)
+                    txBox = slide.shapes.add_textbox(left, top, width, height)
+                    tf = txBox.text_frame
+                    tf.text = text
+                    pres.save(new_file_path)
+                else:
+                    pres_win.after(0, lambda: messagebox.showerror("Error", "Unsupported target format"))
+                    return
+                pres_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
+            except Exception as e:
+                pres_win.after(0, lambda: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
+            finally:
+                pres_win.after(0, progress_bar.stop)
+                pres_win.after(0, progress_bar.pack_forget)
+                pres_win.after(0, lambda: btn_convert.configure(state="normal"))
+
+        progress_bar.pack(pady=5)
+        progress_bar.start()
+        btn_convert.configure(state="disabled")
+        thread = threading.Thread(target=conversion_thread)
+        thread.start()
+
+    btn_convert = ctk.CTkButton(pres_win, text="Convert", command=do_convert, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
+    btn_convert.pack(pady=5)
 
 def open_images_window(master):
     img_win = ctk.CTkToplevel(master)
     img_win.title("Images Conversions")
-    img_win.geometry("300x400")
+    img_win.geometry("300x450")
     img_win.configure(fg_color=BG)
     # Center the window
     img_win.update_idletasks()
     screen_width = img_win.winfo_screenwidth()
     screen_height = img_win.winfo_screenheight()
     x = (screen_width // 2) - (300 // 2)
-    y = (screen_height // 2) - (400 // 2)
-    img_win.geometry(f"300x400+{x}+{y}")
+    y = (screen_height // 2) - (450 // 2)
+    img_win.geometry(f"300x450+{x}+{y}")
     # Set icon
     if os.path.exists(APP_ICON_PATH):
         try:
@@ -243,7 +405,7 @@ def open_images_window(master):
     file_path_var = ctk.StringVar(value="")
 
     def select_file():
-        fp = filedialog.askopenfilename(title="Select Image File", filetypes=[("Image files", "*.jpg;*.jpeg;*.png;*.webp;*.avif;*.ico")])
+        fp = filedialog.askopenfilename(title="Select Image File", filetypes=[("Image files", "*.jpg;*.jpeg;*.png;*.webp;*.avif;*.ico;*.bmp;*.gif;*.tiff")])
         if fp:
             file_path_var.set(fp)
             file_label.configure(text=os.path.basename(fp))
@@ -255,7 +417,7 @@ def open_images_window(master):
     file_label.pack(pady=5)
 
     target_var = ctk.StringVar(value="PNG")
-    combo = ctk.CTkComboBox(img_win, values=["PNG", "JPG", "WEBP", "AVIF", "ICO"], variable=target_var, font=(FONT_FAMILY_REGULAR, 10), width=250)
+    combo = ctk.CTkComboBox(img_win, values=["PNG", "JPG", "WEBP", "AVIF", "ICO", "BMP", "GIF", "TIFF"], variable=target_var, font=(FONT_FAMILY_REGULAR, 10), width=250)
     combo.pack(pady=5)
 
     ico_frame = ctk.CTkFrame(img_win, fg_color=BG)
@@ -275,6 +437,9 @@ def open_images_window(master):
 
     combo.bind("<<ComboboxSelected>>", update_ico_frame)
 
+    progress_bar = ctk.CTkProgressBar(img_win, width=250, mode="indeterminate")
+    # Initially not packed
+
     def do_convert():
         fp = file_path_var.get()
         if not fp:
@@ -288,49 +453,67 @@ def open_images_window(master):
             messagebox.showwarning("Warning", "Input and output formats are the same")
             return
         new_file_path = os.path.splitext(fp)[0] + '.' + target.lower()
-        try:
-            img = Image.open(fp)
-            if target == "JPG":
-                if img.mode in ('RGBA', 'LA', 'P'):
-                    img = img.convert('RGB')
-                img.save(new_file_path, 'JPEG')
-            elif target == "PNG":
-                img.save(new_file_path, 'PNG')
-            elif target == "WEBP":
-                img.save(new_file_path, 'WEBP')
-            elif target == "AVIF":
-                img.save(new_file_path, 'AVIF')
-            elif target == "ICO":
-                selected_sizes = [sizes[i] for i, v in enumerate(check_vars) if v.get()]
-                if not selected_sizes:
-                    messagebox.showerror("Error", "Select at least one size for ICO")
-                    return
-                icon_images = [img.resize((s, s), Image.LANCZOS) for s in selected_sizes]
-                icon_images[0].save(new_file_path, format='ICO', append_images=icon_images[1:] if len(icon_images) > 1 else [])
-            else:
-                raise ValueError("Unsupported target format")
-            messagebox.showinfo("Success", f"File converted to: {new_file_path}")
-        except Exception as e:
-            messagebox.showerror("Error", f"Conversion failed: {str(e)}")
+
+        def conversion_thread():
+            try:
+                img = Image.open(fp)
+                if target == "JPG":
+                    if img.mode in ('RGBA', 'LA', 'P'):
+                        img = img.convert('RGB')
+                    img.save(new_file_path, 'JPEG')
+                elif target == "PNG":
+                    img.save(new_file_path, 'PNG')
+                elif target == "WEBP":
+                    img.save(new_file_path, 'WEBP')
+                elif target == "AVIF":
+                    img.save(new_file_path, 'AVIF')
+                elif target == "ICO":
+                    selected_sizes = [sizes[i] for i, v in enumerate(check_vars) if v.get()]
+                    if not selected_sizes:
+                        img_win.after(0, lambda: messagebox.showerror("Error", "Select at least one size for ICO"))
+                        return
+                    icon_images = [img.resize((s, s), Image.LANCZOS) for s in selected_sizes]
+                    icon_images[0].save(new_file_path, format='ICO', append_images=icon_images[1:] if len(icon_images) > 1 else [])
+                elif target == "BMP":
+                    img.save(new_file_path, 'BMP')
+                elif target == "GIF":
+                    img.save(new_file_path, 'GIF')
+                elif target == "TIFF":
+                    img.save(new_file_path, 'TIFF')
+                else:
+                    raise ValueError("Unsupported target format")
+                img_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
+            except Exception as e:
+                img_win.after(0, lambda: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
+            finally:
+                img_win.after(0, progress_bar.stop)
+                img_win.after(0, progress_bar.pack_forget)
+                img_win.after(0, lambda: btn_convert.configure(state="normal"))
+
+        progress_bar.pack(pady=5)
+        progress_bar.start()
+        btn_convert.configure(state="disabled")
+        thread = threading.Thread(target=conversion_thread)
+        thread.start()
 
     btn_convert = ctk.CTkButton(img_win, text="Convert", command=do_convert, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
     btn_convert.pack(pady=5)
 
-    # Initially hide ico_frame
-    ico_frame.pack_forget()
+    # Initially hide ico_frame if not ICO
+    update_ico_frame()
 
 def open_archive_window(master):
     arch_win = ctk.CTkToplevel(master)
     arch_win.title("Archive Conversions")
-    arch_win.geometry("300x250")
+    arch_win.geometry("300x300")
     arch_win.configure(fg_color=BG)
     # Center the window
     arch_win.update_idletasks()
     screen_width = arch_win.winfo_screenwidth()
     screen_height = arch_win.winfo_screenheight()
     x = (screen_width // 2) - (300 // 2)
-    y = (screen_height // 2) - (250 // 2)
-    arch_win.geometry(f"300x250+{x}+{y}")
+    y = (screen_height // 2) - (300 // 2)
+    arch_win.geometry(f"300x300+{x}+{y}")
     # Set icon
     if os.path.exists(APP_ICON_PATH):
         try:
@@ -347,7 +530,7 @@ def open_archive_window(master):
     file_path_var = ctk.StringVar(value="")
 
     def select_file():
-        fp = filedialog.askopenfilename(title="Select Archive File", filetypes=[("Archive files", "*.zip;*.7z;*.tar")])
+        fp = filedialog.askopenfilename(title="Select Archive File", filetypes=[("Archive files", "*.zip;*.7z;*.tar;*.tar.gz;*.tgz;*.tar.bz2;*.tbz2")])
         if fp:
             file_path_var.set(fp)
             file_label.configure(text=os.path.basename(fp))
@@ -359,58 +542,109 @@ def open_archive_window(master):
     file_label.pack(pady=5)
 
     target_var = ctk.StringVar(value="ZIP")
-    combo = ctk.CTkComboBox(arch_win, values=["ZIP", "7Z", "TAR"], variable=target_var, font=(FONT_FAMILY_REGULAR, 10), width=250)
+    combo = ctk.CTkComboBox(arch_win, values=["ZIP", "7Z", "TAR", "TGZ", "TBZ2"], variable=target_var, font=(FONT_FAMILY_REGULAR, 10), width=250)
     combo.pack(pady=5)
+
+    progress_bar = ctk.CTkProgressBar(arch_win, width=250, mode="indeterminate")
+    # Initially not packed
+
+    def get_archive_type(fp):
+        lfp = fp.lower()
+        if lfp.endswith('.zip'):
+            return 'zip'
+        if lfp.endswith('.7z'):
+            return '7z'
+        if lfp.endswith('.tar'):
+            return 'tar'
+        if lfp.endswith('.tar.gz') or lfp.endswith('.tgz'):
+            return 'tgz'
+        if lfp.endswith('.tar.bz2') or lfp.endswith('.tbz2'):
+            return 'tbz2'
+        raise ValueError("Unsupported archive type")
 
     def do_convert():
         fp = file_path_var.get()
         if not fp:
             messagebox.showerror("Error", "No file selected")
             return
-        target = target_var.get().lower()
-        input_ext = os.path.splitext(fp)[1].lower()[1:]
-        if target == input_ext:
+        target = target_var.get().upper()
+        try:
+            input_type = get_archive_type(fp)
+        except ValueError:
+            messagebox.showerror("Error", "Unsupported input format")
+            return
+        if target.lower() == input_type:
             messagebox.showwarning("Warning", "Input and output formats are the same")
             return
-        new_file_path = os.path.splitext(fp)[0] + '.' + target
+        ext_map = {
+            'ZIP': '.zip',
+            '7Z': '.7z',
+            'TAR': '.tar',
+            'TGZ': '.tar.gz',
+            'TBZ2': '.tar.bz2'
+        }
+        new_file_path = os.path.splitext(fp)[0] + ext_map[target]
         temp_dir = tempfile.mkdtemp()
-        try:
-            # Extract
-            if input_ext == 'zip':
-                with zipfile.ZipFile(fp, 'r') as z:
-                    z.extractall(temp_dir)
-            elif input_ext == '7z':
-                with py7zr.SevenZipFile(fp, 'r') as z:
-                    z.extractall(temp_dir)
-            elif input_ext == 'tar':
-                with tarfile.open(fp, 'r') as t:
-                    t.extractall(temp_dir)
-            else:
-                raise ValueError("Unsupported input format")
-            
-            # Create new archive
-            if target == 'zip':
-                with zipfile.ZipFile(new_file_path, 'w', zipfile.ZIP_DEFLATED) as z:
-                    for root, dirs, files in os.walk(temp_dir):
-                        for file in files:
-                            z.write(os.path.join(root, file), os.path.relpath(os.path.join(root, file), temp_dir))
-            elif target == '7z':
-                with py7zr.SevenZipFile(new_file_path, 'w') as z:
-                    for root, dirs, files in os.walk(temp_dir):
-                        for file in files:
-                            z.write(os.path.join(root, file), os.path.relpath(os.path.join(root, file), temp_dir))
-            elif target == 'tar':
-                with tarfile.open(new_file_path, 'w') as t:
-                    for root, dirs, files in os.walk(temp_dir):
-                        for file in files:
-                            t.add(os.path.join(root, file), os.path.relpath(os.path.join(root, file), temp_dir))
-            else:
-                raise ValueError("Unsupported target format")
-            messagebox.showinfo("Success", f"File converted to: {new_file_path}")
-        except Exception as e:
-            messagebox.showerror("Error", f"Conversion failed: {str(e)}")
-        finally:
-            shutil.rmtree(temp_dir)
+
+        def conversion_thread():
+            try:
+                # Extract
+                if input_type == 'zip':
+                    with zipfile.ZipFile(fp, 'r') as z:
+                        z.extractall(temp_dir)
+                elif input_type == '7z':
+                    with py7zr.SevenZipFile(fp, 'r') as z:
+                        z.extractall(temp_dir)
+                elif input_type == 'tar':
+                    with tarfile.open(fp, 'r') as t:
+                        t.extractall(temp_dir)
+                elif input_type == 'tgz':
+                    with tarfile.open(fp, 'r:gz') as t:
+                        t.extractall(temp_dir)
+                elif input_type == 'tbz2':
+                    with tarfile.open(fp, 'r:bz2') as t:
+                        t.extractall(temp_dir)
+                
+                # Create new archive
+                if target == 'ZIP':
+                    with zipfile.ZipFile(new_file_path, 'w', zipfile.ZIP_DEFLATED) as z:
+                        for root, dirs, files in os.walk(temp_dir):
+                            for file in files:
+                                z.write(os.path.join(root, file), os.path.relpath(os.path.join(root, file), temp_dir))
+                elif target == '7Z':
+                    with py7zr.SevenZipFile(new_file_path, 'w') as z:
+                        for root, dirs, files in os.walk(temp_dir):
+                            for file in files:
+                                z.write(os.path.join(root, file), os.path.relpath(os.path.join(root, file), temp_dir))
+                elif target == 'TAR':
+                    with tarfile.open(new_file_path, 'w') as t:
+                        for root, dirs, files in os.walk(temp_dir):
+                            for file in files:
+                                t.add(os.path.join(root, file), os.path.relpath(os.path.join(root, file), temp_dir))
+                elif target == 'TGZ':
+                    with tarfile.open(new_file_path, 'w:gz') as t:
+                        for root, dirs, files in os.walk(temp_dir):
+                            for file in files:
+                                t.add(os.path.join(root, file), os.path.relpath(os.path.join(root, file), temp_dir))
+                elif target == 'TBZ2':
+                    with tarfile.open(new_file_path, 'w:bz2') as t:
+                        for root, dirs, files in os.walk(temp_dir):
+                            for file in files:
+                                t.add(os.path.join(root, file), os.path.relpath(os.path.join(root, file), temp_dir))
+                arch_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
+            except Exception as e:
+                arch_win.after(0, lambda: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
+            finally:
+                shutil.rmtree(temp_dir)
+                arch_win.after(0, progress_bar.stop)
+                arch_win.after(0, progress_bar.pack_forget)
+                arch_win.after(0, lambda: btn_convert.configure(state="normal"))
+
+        progress_bar.pack(pady=5)
+        progress_bar.start()
+        btn_convert.configure(state="disabled")
+        thread = threading.Thread(target=conversion_thread)
+        thread.start()
 
     btn_convert = ctk.CTkButton(arch_win, text="Convert", command=do_convert, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
     btn_convert.pack(pady=5)
@@ -418,15 +652,15 @@ def open_archive_window(master):
 def open_other_window(master):
     other_win = ctk.CTkToplevel(master)
     other_win.title("Other Conversions")
-    other_win.geometry("300x200")
+    other_win.geometry("300x300")
     other_win.configure(fg_color=BG)
     # Center the window
     other_win.update_idletasks()
     screen_width = other_win.winfo_screenwidth()
     screen_height = other_win.winfo_screenheight()
     x = (screen_width // 2) - (300 // 2)
-    y = (screen_height // 2) - (200 // 2)
-    other_win.geometry(f"300x200+{x}+{y}")
+    y = (screen_height // 2) - (300 // 2)
+    other_win.geometry(f"300x300+{x}+{y}")
     # Set icon
     if os.path.exists(APP_ICON_PATH):
         try:
@@ -437,8 +671,86 @@ def open_other_window(master):
     other_win.transient(master)
     other_win.grab_set()
 
-    label = ctk.CTkLabel(other_win, text="Other conversions coming soon!", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 12))
+    label = ctk.CTkLabel(other_win, text="Spreadsheet Converter", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 12))
     label.pack(pady=10)
+
+    file_path_var = ctk.StringVar(value="")
+
+    def select_file():
+        fp = filedialog.askopenfilename(title="Select Spreadsheet File", filetypes=[("Spreadsheet files", "*.xlsx;*.csv")])
+        if fp:
+            file_path_var.set(fp)
+            file_label.configure(text=os.path.basename(fp))
+
+    btn_select = ctk.CTkButton(other_win, text="Select File", command=select_file, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
+    btn_select.pack(pady=5)
+
+    file_label = ctk.CTkLabel(other_win, text="No file selected", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
+    file_label.pack(pady=5)
+
+    target_var = ctk.StringVar(value="XLSX")
+    combo = ctk.CTkComboBox(other_win, values=["XLSX", "CSV"], variable=target_var, font=(FONT_FAMILY_REGULAR, 10), width=250)
+    combo.pack(pady=5)
+
+    progress_bar = ctk.CTkProgressBar(other_win, width=250, mode="indeterminate")
+    # Initially not packed
+
+    def do_convert():
+        fp = file_path_var.get()
+        if not fp:
+            messagebox.showerror("Error", "No file selected")
+            return
+        target = target_var.get().upper()
+        input_ext = os.path.splitext(fp)[1].lower()[1:]
+        if target.lower() == input_ext:
+            messagebox.showwarning("Warning", "Input and output formats are the same")
+            return
+        new_file_path = os.path.splitext(fp)[0] + '.' + target.lower()
+
+        def conversion_thread():
+            try:
+                data = []
+                if input_ext == "xlsx":
+                    wb = openpyxl.load_workbook(fp)
+                    sheet = wb.active
+                    data = [[cell.value for cell in row] for row in sheet.rows]
+                elif input_ext == "csv":
+                    with open(fp, 'r', newline='') as f:
+                        reader = csv.reader(f)
+                        data = list(reader)
+                else:
+                    other_win.after(0, lambda: messagebox.showerror("Error", "Unsupported input format"))
+                    return
+
+                if target == "XLSX":
+                    wb = openpyxl.Workbook()
+                    sheet = wb.active
+                    for row in data:
+                        sheet.append(row)
+                    wb.save(new_file_path)
+                elif target == "CSV":
+                    with open(new_file_path, 'w', newline='') as f:
+                        writer = csv.writer(f)
+                        writer.writerows(data)
+                else:
+                    other_win.after(0, lambda: messagebox.showerror("Error", "Unsupported target format"))
+                    return
+                other_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
+            except Exception as e:
+                other_win.after(0, lambda: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
+            finally:
+                other_win.after(0, progress_bar.stop)
+                other_win.after(0, progress_bar.pack_forget)
+                other_win.after(0, lambda: btn_convert.configure(state="normal"))
+
+        progress_bar.pack(pady=5)
+        progress_bar.start()
+        btn_convert.configure(state="disabled")
+        thread = threading.Thread(target=conversion_thread)
+        thread.start()
+
+    btn_convert = ctk.CTkButton(other_win, text="Convert", command=do_convert, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
+    btn_convert.pack(pady=5)
 
 # Extend the app class with open methods
 class WormholeApp(WormholeApp):
