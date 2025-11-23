@@ -1,13 +1,62 @@
 # Wormhole File Converter
 # This program provides a simple GUI for converting files between formats.
-# Requires additional libraries: pip install pillow reportlab
+# Requires additional libraries: pip install pillow reportlab customtkinter
 # Pillow for image handling, ReportLab for PDF generation.
 
-import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+import os
+import sys
+import customtkinter as ctk
+from tkinter import filedialog, messagebox
 from PIL import Image
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
+
+# Theme colors from Black Hole style
+BG = "#05050a"
+CARD = "#0b0b0f"
+CARD_HOVER = "#111327"
+ACCENT = "#47a3ff"
+ACCENT_DIM = "#2b6f9f"
+TEXT = "#e6eef8"
+
+# Set up customtkinter
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("dark-blue")
+
+class WormholeApp(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+        self.title("Wormhole File Converter")
+        self.geometry("400x400")
+        self.configure(fg_color=BG)
+        self._build_ui()
+
+    def _build_ui(self):
+        # Custom label for instructions
+        label = ctk.CTkLabel(self, text="Select a file type category:", fg_color=BG, text_color=TEXT, font=("Arial", 12))
+        label.pack(pady=20)
+
+        # Buttons for each category
+        btn_docs = ctk.CTkButton(self, text="Docs", command=self.open_docs_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=("Arial", 10))
+        btn_docs.pack(pady=5)
+
+        btn_presentations = ctk.CTkButton(self, text="Presentations", command=self.open_presentations_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=("Arial", 10))
+        btn_presentations.pack(pady=5)
+
+        btn_images = ctk.CTkButton(self, text="Images", command=self.open_images_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=("Arial", 10))
+        btn_images.pack(pady=5)
+
+        btn_videos = ctk.CTkButton(self, text="Videos", command=self.open_videos_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=("Arial", 10))
+        btn_videos.pack(pady=5)
+
+        btn_audio = ctk.CTkButton(self, text="Audio", command=self.open_audio_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=("Arial", 10))
+        btn_audio.pack(pady=5)
+
+        btn_archive = ctk.CTkButton(self, text="Archive", command=self.open_archive_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=("Arial", 10))
+        btn_archive.pack(pady=5)
+
+        btn_other = ctk.CTkButton(self, text="Other", command=self.open_other_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=("Arial", 10))
+        btn_other.pack(pady=5)
 
 # Distinctly labeled defs for each converter
 
@@ -70,126 +119,115 @@ def convert_txt_to_pdf():
 
 # Functions to open subwindows for each category
 
-def open_docs_window():
-    docs_win = tk.Toplevel()
+def open_docs_window(master):
+    docs_win = ctk.CTkToplevel(master)
     docs_win.title("Docs Conversions")
     docs_win.geometry("300x200")
-    docs_win.configure(bg="#f0f0f0")
+    docs_win.configure(fg_color=BG)
 
-    label = tk.Label(docs_win, text="Select Docs Conversion:", bg="#f0f0f0", font=("Arial", 12))
+    label = ctk.CTkLabel(docs_win, text="Select Docs Conversion:", fg_color=BG, text_color=TEXT, font=("Arial", 12))
     label.pack(pady=10)
 
-    btn_txt_to_pdf = tk.Button(docs_win, text="Convert TXT to PDF", command=convert_txt_to_pdf, width=25, bg="#FFC107", fg="black", font=("Arial", 10))
+    btn_txt_to_pdf = ctk.CTkButton(docs_win, text="Convert TXT to PDF", command=convert_txt_to_pdf, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=("Arial", 10))
     btn_txt_to_pdf.pack(pady=5)
 
     # Add more doc converters here if needed
 
-def open_presentations_window():
-    pres_win = tk.Toplevel()
+def open_presentations_window(master):
+    pres_win = ctk.CTkToplevel(master)
     pres_win.title("Presentations Conversions")
     pres_win.geometry("300x200")
-    pres_win.configure(bg="#f0f0f0")
+    pres_win.configure(fg_color=BG)
 
-    label = tk.Label(pres_win, text="Presentations conversions coming soon!", bg="#f0f0f0", font=("Arial", 12))
+    label = ctk.CTkLabel(pres_win, text="Presentations conversions coming soon!", fg_color=BG, text_color=TEXT, font=("Arial", 12))
     label.pack(pady=10)
 
     # Placeholder for future converters
 
-def open_images_window():
-    img_win = tk.Toplevel()
+def open_images_window(master):
+    img_win = ctk.CTkToplevel(master)
     img_win.title("Images Conversions")
     img_win.geometry("300x200")
-    img_win.configure(bg="#f0f0f0")
+    img_win.configure(fg_color=BG)
 
-    label = tk.Label(img_win, text="Select Images Conversion:", bg="#f0f0f0", font=("Arial", 12))
+    label = ctk.CTkLabel(img_win, text="Select Images Conversion:", fg_color=BG, text_color=TEXT, font=("Arial", 12))
     label.pack(pady=10)
 
-    btn_jpg_to_png = tk.Button(img_win, text="Convert JPG to PNG", command=convert_jpg_to_png, width=25, bg="#4CAF50", fg="white", font=("Arial", 10))
+    btn_jpg_to_png = ctk.CTkButton(img_win, text="Convert JPG to PNG", command=convert_jpg_to_png, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=("Arial", 10))
     btn_jpg_to_png.pack(pady=5)
 
-    btn_png_to_jpg = tk.Button(img_win, text="Convert PNG to JPG", command=convert_png_to_jpg, width=25, bg="#2196F3", fg="white", font=("Arial", 10))
+    btn_png_to_jpg = ctk.CTkButton(img_win, text="Convert PNG to JPG", command=convert_png_to_jpg, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=("Arial", 10))
     btn_png_to_jpg.pack(pady=5)
 
     # Add more image converters here if needed
 
-def open_videos_window():
-    vid_win = tk.Toplevel()
+def open_videos_window(master):
+    vid_win = ctk.CTkToplevel(master)
     vid_win.title("Videos Conversions")
     vid_win.geometry("300x200")
-    vid_win.configure(bg="#f0f0f0")
+    vid_win.configure(fg_color=BG)
 
-    label = tk.Label(vid_win, text="Videos conversions coming soon!", bg="#f0f0f0", font=("Arial", 12))
+    label = ctk.CTkLabel(vid_win, text="Videos conversions coming soon!", fg_color=BG, text_color=TEXT, font=("Arial", 12))
     label.pack(pady=10)
 
     # Placeholder for future converters
 
-def open_audio_window():
-    aud_win = tk.Toplevel()
+def open_audio_window(master):
+    aud_win = ctk.CTkToplevel(master)
     aud_win.title("Audio Conversions")
     aud_win.geometry("300x200")
-    aud_win.configure(bg="#f0f0f0")
+    aud_win.configure(fg_color=BG)
 
-    label = tk.Label(aud_win, text="Audio conversions coming soon!", bg="#f0f0f0", font=("Arial", 12))
+    label = ctk.CTkLabel(aud_win, text="Audio conversions coming soon!", fg_color=BG, text_color=TEXT, font=("Arial", 12))
     label.pack(pady=10)
 
     # Placeholder for future converters
 
-def open_archive_window():
-    arch_win = tk.Toplevel()
+def open_archive_window(master):
+    arch_win = ctk.CTkToplevel(master)
     arch_win.title("Archive Conversions")
     arch_win.geometry("300x200")
-    arch_win.configure(bg="#f0f0f0")
+    arch_win.configure(fg_color=BG)
 
-    label = tk.Label(arch_win, text="Archive conversions coming soon!", bg="#f0f0f0", font=("Arial", 12))
+    label = ctk.CTkLabel(arch_win, text="Archive conversions coming soon!", fg_color=BG, text_color=TEXT, font=("Arial", 12))
     label.pack(pady=10)
 
     # Placeholder for future converters
 
-def open_other_window():
-    other_win = tk.Toplevel()
+def open_other_window(master):
+    other_win = ctk.CTkToplevel(master)
     other_win.title("Other Conversions")
     other_win.geometry("300x200")
-    other_win.configure(bg="#f0f0f0")
+    other_win.configure(fg_color=BG)
 
-    label = tk.Label(other_win, text="Other conversions coming soon!", bg="#f0f0f0", font=("Arial", 12))
+    label = ctk.CTkLabel(other_win, text="Other conversions coming soon!", fg_color=BG, text_color=TEXT, font=("Arial", 12))
     label.pack(pady=10)
 
     # Placeholder for future converters
 
-# Main UI section
-def main_ui():
-    root = tk.Tk()
-    root.title("Wormhole File Converter")
-    root.geometry("400x400")  # Adjusted window size
-    root.configure(bg="#f0f0f0")  # Custom background color
+# Extend the app class with open methods
+class WormholeApp(WormholeApp):
+    def open_docs_window(self):
+        open_docs_window(self)
 
-    # Custom label for instructions
-    label = tk.Label(root, text="Select a file type category:", bg="#f0f0f0", font=("Arial", 12))
-    label.pack(pady=20)
+    def open_presentations_window(self):
+        open_presentations_window(self)
 
-    # Buttons for each category with custom styling
-    btn_docs = tk.Button(root, text="Docs", command=open_docs_window, width=30, bg="#FFC107", fg="black", font=("Arial", 10))
-    btn_docs.pack(pady=5)
+    def open_images_window(self):
+        open_images_window(self)
 
-    btn_presentations = tk.Button(root, text="Presentations", command=open_presentations_window, width=30, bg="#FF5722", fg="white", font=("Arial", 10))
-    btn_presentations.pack(pady=5)
+    def open_videos_window(self):
+        open_videos_window(self)
 
-    btn_images = tk.Button(root, text="Images", command=open_images_window, width=30, bg="#4CAF50", fg="white", font=("Arial", 10))
-    btn_images.pack(pady=5)
+    def open_audio_window(self):
+        open_audio_window(self)
 
-    btn_videos = tk.Button(root, text="Videos", command=open_videos_window, width=30, bg="#2196F3", fg="white", font=("Arial", 10))
-    btn_videos.pack(pady=5)
+    def open_archive_window(self):
+        open_archive_window(self)
 
-    btn_audio = tk.Button(root, text="Audio", command=open_audio_window, width=30, bg="#9C27B0", fg="white", font=("Arial", 10))
-    btn_audio.pack(pady=5)
-
-    btn_archive = tk.Button(root, text="Archive", command=open_archive_window, width=30, bg="#607D8B", fg="white", font=("Arial", 10))
-    btn_archive.pack(pady=5)
-
-    btn_other = tk.Button(root, text="Other", command=open_other_window, width=30, bg="#795548", fg="white", font=("Arial", 10))
-    btn_other.pack(pady=5)
-
-    root.mainloop()
+    def open_other_window(self):
+        open_other_window(self)
 
 if __name__ == "__main__":
-    main_ui()
+    app = WormholeApp()
+    app.mainloop()
