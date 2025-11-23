@@ -1,8 +1,3 @@
-# Wormhole File Converter
-# This program provides a simple GUI for converting files between formats.
-# Requires additional libraries: pip install pillow reportlab customtkinter
-# Pillow for image handling, ReportLab for PDF generation.
-
 import os
 import sys
 import customtkinter as ctk
@@ -10,7 +5,6 @@ from tkinter import filedialog, messagebox
 from PIL import Image
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
-import tkinter.font as tkfont
 
 BG = "#0a0812"
 CARD = "#120f1e"
@@ -110,54 +104,70 @@ class WormholeApp(ctk.CTk):
         btn_other = ctk.CTkButton(self, text="Other", command=self.open_other_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_other.pack(pady=5)
 
-# Distinctly labeled defs for each converter
+# Functions to open subwindows for each category
 
-def convert_jpg_to_png():
-    """
-    Converter for JPG to PNG.
-    Opens a file dialog to select a JPG file and converts it to PNG.
-    """
-    file_path = filedialog.askopenfilename(title="Select JPG File", filetypes=[("JPG files", "*.jpg;*.jpeg")])
-    if file_path:
+def open_docs_window(master):
+    docs_win = ctk.CTkToplevel(master)
+    docs_win.title("Docs Conversions")
+    docs_win.geometry("300x250")
+    docs_win.configure(fg_color=BG)
+    # Center the window
+    docs_win.update_idletasks()
+    screen_width = docs_win.winfo_screenwidth()
+    screen_height = docs_win.winfo_screenheight()
+    x = (screen_width // 2) - (300 // 2)
+    y = (screen_height // 2) - (250 // 2)
+    docs_win.geometry(f"300x250+{x}+{y}")
+    # Set icon
+    if os.path.exists(APP_ICON_PATH):
         try:
-            img = Image.open(file_path)
-            new_file_path = file_path.rsplit('.', 1)[0] + '.png'
-            img.save(new_file_path, 'PNG')
-            messagebox.showinfo("Success", f"File converted to: {new_file_path}")
+            docs_win.after(250, lambda: docs_win.iconbitmap(APP_ICON_PATH))
         except Exception as e:
-            messagebox.showerror("Error", f"Conversion failed: {str(e)}")
+            print(f"Could not set icon for docs window: {e}")
+    # Make it transient and grab set to stay on top
+    docs_win.transient(master)
+    docs_win.grab_set()
 
-def convert_png_to_jpg():
-    """
-    Converter for PNG to JPG.
-    Opens a file dialog to select a PNG file and converts it to JPG.
-    """
-    file_path = filedialog.askopenfilename(title="Select PNG File", filetypes=[("PNG files", "*.png")])
-    if file_path:
-        try:
-            img = Image.open(file_path)
-            new_file_path = file_path.rsplit('.', 1)[0] + '.jpg'
-            # Convert to RGB mode if necessary (JPG doesn't support alpha channel)
-            if img.mode in ('RGBA', 'LA'):
-                img = img.convert('RGB')
-            img.save(new_file_path, 'JPEG')
-            messagebox.showinfo("Success", f"File converted to: {new_file_path}")
-        except Exception as e:
-            messagebox.showerror("Error", f"Conversion failed: {str(e)}")
+    label = ctk.CTkLabel(docs_win, text="Docs Converter", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 12))
+    label.pack(pady=10)
 
-def convert_txt_to_pdf():
-    """
-    Converter for TXT to PDF.
-    Opens a file dialog to select a TXT file and converts it to PDF.
-    """
-    file_path = filedialog.askopenfilename(title="Select TXT File", filetypes=[("Text files", "*.txt")])
-    if file_path:
+    file_path_var = ctk.StringVar(value="")
+
+    def select_file():
+        fp = filedialog.askopenfilename(title="Select TXT File", filetypes=[("Text files", "*.txt")])
+        if fp:
+            file_path_var.set(fp)
+            file_label.configure(text=os.path.basename(fp))
+
+    btn_select = ctk.CTkButton(docs_win, text="Select File", command=select_file, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
+    btn_select.pack(pady=5)
+
+    file_label = ctk.CTkLabel(docs_win, text="No file selected", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
+    file_label.pack(pady=5)
+
+    target_var = ctk.StringVar(value="PDF")
+    combo = ctk.CTkComboBox(docs_win, values=["PDF"], variable=target_var, font=(FONT_FAMILY_REGULAR, 10), width=250)
+    combo.pack(pady=5)
+
+    def do_convert():
+        fp = file_path_var.get()
+        if not fp:
+            messagebox.showerror("Error", "No file selected")
+            return
+        target = target_var.get().lower()
+        input_ext = os.path.splitext(fp)[1].lower()[1:]
+        if target == input_ext:
+            messagebox.showwarning("Warning", "Input and output formats are the same")
+            return
+        if target != "pdf" or input_ext != "txt":
+            messagebox.showerror("Error", "Unsupported conversion")
+            return
         try:
-            new_file_path = file_path.rsplit('.', 1)[0] + '.pdf'
+            new_file_path = os.path.splitext(fp)[0] + '.pdf'
             c = canvas.Canvas(new_file_path, pagesize=letter)
             width, height = letter
             y = height - 50  # Start from top with margin
-            with open(file_path, 'r') as f:
+            with open(fp, 'r') as f:
                 for line in f:
                     c.drawString(50, y, line.strip())
                     y -= 15  # Line spacing
@@ -169,37 +179,8 @@ def convert_txt_to_pdf():
         except Exception as e:
             messagebox.showerror("Error", f"Conversion failed: {str(e)}")
 
-# Functions to open subwindows for each category
-
-def open_docs_window(master):
-    docs_win = ctk.CTkToplevel(master)
-    docs_win.title("Docs Conversions")
-    docs_win.geometry("300x200")
-    docs_win.configure(fg_color=BG)
-    # Center the window
-    docs_win.update_idletasks()
-    screen_width = docs_win.winfo_screenwidth()
-    screen_height = docs_win.winfo_screenheight()
-    x = (screen_width // 2) - (300 // 2)
-    y = (screen_height // 2) - (200 // 2)
-    docs_win.geometry(f"300x200+{x}+{y}")
-    # Set icon
-    if os.path.exists(APP_ICON_PATH):
-        try:
-            docs_win.after(250, lambda: docs_win.iconbitmap(APP_ICON_PATH))
-        except Exception as e:
-            print(f"Could not set icon for docs window: {e}")
-    # Make it transient and grab set to stay on top
-    docs_win.transient(master)
-    docs_win.grab_set()
-
-    label = ctk.CTkLabel(docs_win, text="Select Docs Conversion:", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 12))
-    label.pack(pady=10)
-
-    btn_txt_to_pdf = ctk.CTkButton(docs_win, text="Convert TXT to PDF", command=convert_txt_to_pdf, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
-    btn_txt_to_pdf.pack(pady=5)
-
-    # Add more doc converters here if needed
+    btn_convert = ctk.CTkButton(docs_win, text="Convert", command=do_convert, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
+    btn_convert.pack(pady=5)
 
 def open_presentations_window(master):
     pres_win = ctk.CTkToplevel(master)
@@ -231,15 +212,15 @@ def open_presentations_window(master):
 def open_images_window(master):
     img_win = ctk.CTkToplevel(master)
     img_win.title("Images Conversions")
-    img_win.geometry("300x200")
+    img_win.geometry("300x250")
     img_win.configure(fg_color=BG)
     # Center the window
     img_win.update_idletasks()
     screen_width = img_win.winfo_screenwidth()
     screen_height = img_win.winfo_screenheight()
     x = (screen_width // 2) - (300 // 2)
-    y = (screen_height // 2) - (200 // 2)
-    img_win.geometry(f"300x200+{x}+{y}")
+    y = (screen_height // 2) - (250 // 2)
+    img_win.geometry(f"300x250+{x}+{y}")
     # Set icon
     if os.path.exists(APP_ICON_PATH):
         try:
@@ -250,16 +231,54 @@ def open_images_window(master):
     img_win.transient(master)
     img_win.grab_set()
 
-    label = ctk.CTkLabel(img_win, text="Select Images Conversion:", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 12))
+    label = ctk.CTkLabel(img_win, text="Images Converter", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 12))
     label.pack(pady=10)
 
-    btn_jpg_to_png = ctk.CTkButton(img_win, text="Convert JPG to PNG", command=convert_jpg_to_png, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
-    btn_jpg_to_png.pack(pady=5)
+    file_path_var = ctk.StringVar(value="")
 
-    btn_png_to_jpg = ctk.CTkButton(img_win, text="Convert PNG to JPG", command=convert_png_to_jpg, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
-    btn_png_to_jpg.pack(pady=5)
+    def select_file():
+        fp = filedialog.askopenfilename(title="Select Image File", filetypes=[("Image files", "*.jpg;*.jpeg;*.png")])
+        if fp:
+            file_path_var.set(fp)
+            file_label.configure(text=os.path.basename(fp))
 
-    # Add more image converters here if needed
+    btn_select = ctk.CTkButton(img_win, text="Select File", command=select_file, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
+    btn_select.pack(pady=5)
+
+    file_label = ctk.CTkLabel(img_win, text="No file selected", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
+    file_label.pack(pady=5)
+
+    target_var = ctk.StringVar(value="PNG")
+    combo = ctk.CTkComboBox(img_win, values=["PNG", "JPG"], variable=target_var, font=(FONT_FAMILY_REGULAR, 10), width=250)
+    combo.pack(pady=5)
+
+    def do_convert():
+        fp = file_path_var.get()
+        if not fp:
+            messagebox.showerror("Error", "No file selected")
+            return
+        target = target_var.get().lower()
+        input_ext = os.path.splitext(fp)[1].lower()[1:]
+        if target == input_ext or (target == "jpg" and input_ext in ["jpg", "jpeg"]):
+            messagebox.showwarning("Warning", "Input and output formats are the same")
+            return
+        try:
+            img = Image.open(fp)
+            new_file_path = os.path.splitext(fp)[0] + '.' + target
+            if target == "jpg":
+                if img.mode in ('RGBA', 'LA', 'P'):
+                    img = img.convert('RGB')
+                img.save(new_file_path, 'JPEG')
+            elif target == "png":
+                img.save(new_file_path, 'PNG')
+            else:
+                raise ValueError("Unsupported target format")
+            messagebox.showinfo("Success", f"File converted to: {new_file_path}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Conversion failed: {str(e)}")
+
+    btn_convert = ctk.CTkButton(img_win, text="Convert", command=do_convert, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
+    btn_convert.pack(pady=5)
 
 def open_videos_window(master):
     vid_win = ctk.CTkToplevel(master)
@@ -287,6 +306,7 @@ def open_videos_window(master):
     label.pack(pady=10)
 
     # Placeholder for future converters
+    # To implement: Add libraries like moviepy, define filetypes (e.g., "*.mp4;*.avi"), targets (e.g., "MP4", "AVI"), and conversion logic
 
 def open_audio_window(master):
     aud_win = ctk.CTkToplevel(master)
@@ -314,6 +334,7 @@ def open_audio_window(master):
     label.pack(pady=10)
 
     # Placeholder for future converters
+    # To implement: Add libraries like pydub, define filetypes (e.g., "*.mp3;*.wav"), targets (e.g., "MP3", "WAV"), and conversion logic
 
 def open_archive_window(master):
     arch_win = ctk.CTkToplevel(master)
@@ -341,6 +362,7 @@ def open_archive_window(master):
     label.pack(pady=10)
 
     # Placeholder for future converters
+    # To implement: Use zipfile/tarfile, define filetypes (e.g., "*.zip;*.tar"), targets (e.g., "ZIP", "TAR"), and conversion logic (extract/rearchive)
 
 def open_other_window(master):
     other_win = ctk.CTkToplevel(master)
