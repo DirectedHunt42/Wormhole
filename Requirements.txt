@@ -1,2 +1,4 @@
 Pillow
 reportlab
+pypdf
+py7zr
