@@ -183,6 +183,15 @@ def open_docs_window(master):
     x = (screen_width // 2) - (300 // 2)
     y = (screen_height // 2) - (200 // 2)
     docs_win.geometry(f"300x200+{x}+{y}")
+    # Set icon
+    if os.path.exists(APP_ICON_PATH):
+        try:
+            docs_win.after(250, lambda: docs_win.iconbitmap(APP_ICON_PATH))
+        except Exception as e:
+            print(f"Could not set icon for docs window: {e}")
+    # Make it transient and grab set to stay on top
+    docs_win.transient(master)
+    docs_win.grab_set()
 
     label = ctk.CTkLabel(docs_win, text="Select Docs Conversion:", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 12))
     label.pack(pady=10)
@@ -204,6 +213,15 @@ def open_presentations_window(master):
     x = (screen_width // 2) - (300 // 2)
     y = (screen_height // 2) - (200 // 2)
     pres_win.geometry(f"300x200+{x}+{y}")
+    # Set icon
+    if os.path.exists(APP_ICON_PATH):
+        try:
+            pres_win.after(250, lambda: pres_win.iconbitmap(APP_ICON_PATH))
+        except Exception as e:
+            print(f"Could not set icon for presentations window: {e}")
+    # Make it transient and grab set to stay on top
+    pres_win.transient(master)
+    pres_win.grab_set()
 
     label = ctk.CTkLabel(pres_win, text="Presentations conversions coming soon!", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 12))
     label.pack(pady=10)
@@ -222,6 +240,15 @@ def open_images_window(master):
     x = (screen_width // 2) - (300 // 2)
     y = (screen_height // 2) - (200 // 2)
     img_win.geometry(f"300x200+{x}+{y}")
+    # Set icon
+    if os.path.exists(APP_ICON_PATH):
+        try:
+            img_win.after(250, lambda: img_win.iconbitmap(APP_ICON_PATH))
+        except Exception as e:
+            print(f"Could not set icon for images window: {e}")
+    # Make it transient and grab set to stay on top
+    img_win.transient(master)
+    img_win.grab_set()
 
     label = ctk.CTkLabel(img_win, text="Select Images Conversion:", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 12))
     label.pack(pady=10)
@@ -246,6 +273,15 @@ def open_videos_window(master):
     x = (screen_width // 2) - (300 // 2)
     y = (screen_height // 2) - (200 // 2)
     vid_win.geometry(f"300x200+{x}+{y}")
+    # Set icon
+    if os.path.exists(APP_ICON_PATH):
+        try:
+            vid_win.after(250, lambda: vid_win.iconbitmap(APP_ICON_PATH))
+        except Exception as e:
+            print(f"Could not set icon for videos window: {e}")
+    # Make it transient and grab set to stay on top
+    vid_win.transient(master)
+    vid_win.grab_set()
 
     label = ctk.CTkLabel(vid_win, text="Videos conversions coming soon!", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 12))
     label.pack(pady=10)
@@ -264,6 +300,15 @@ def open_audio_window(master):
     x = (screen_width // 2) - (300 // 2)
     y = (screen_height // 2) - (200 // 2)
     aud_win.geometry(f"300x200+{x}+{y}")
+    # Set icon
+    if os.path.exists(APP_ICON_PATH):
+        try:
+            aud_win.after(250, lambda: aud_win.iconbitmap(APP_ICON_PATH))
+        except Exception as e:
+            print(f"Could not set icon for audio window: {e}")
+    # Make it transient and grab set to stay on top
+    aud_win.transient(master)
+    aud_win.grab_set()
 
     label = ctk.CTkLabel(aud_win, text="Audio conversions coming soon!", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 12))
     label.pack(pady=10)
@@ -282,6 +327,15 @@ def open_archive_window(master):
     x = (screen_width // 2) - (300 // 2)
     y = (screen_height // 2) - (200 // 2)
     arch_win.geometry(f"300x200+{x}+{y}")
+    # Set icon
+    if os.path.exists(APP_ICON_PATH):
+        try:
+            arch_win.after(250, lambda: arch_win.iconbitmap(APP_ICON_PATH))
+        except Exception as e:
+            print(f"Could not set icon for archive window: {e}")
+    # Make it transient and grab set to stay on top
+    arch_win.transient(master)
+    arch_win.grab_set()
 
     label = ctk.CTkLabel(arch_win, text="Archive conversions coming soon!", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 12))
     label.pack(pady=10)
@@ -300,6 +354,15 @@ def open_other_window(master):
     x = (screen_width // 2) - (300 // 2)
     y = (screen_height // 2) - (200 // 2)
     other_win.geometry(f"300x200+{x}+{y}")
+    # Set icon
+    if os.path.exists(APP_ICON_PATH):
+        try:
+            other_win.after(250, lambda: other_win.iconbitmap(APP_ICON_PATH))
+        except Exception as e:
+            print(f"Could not set icon for other window: {e}")
+    # Make it transient and grab set to stay on top
+    other_win.transient(master)
+    other_win.grab_set()
 
     label = ctk.CTkLabel(other_win, text="Other conversions coming soon!", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 12))
     label.pack(pady=10)
