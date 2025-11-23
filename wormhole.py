@@ -23,6 +23,7 @@ try:
     RTF_SUPPORT = True
 except ImportError:
     RTF_SUPPORT = False
+import ezodf
 
 BG = "#0a0812"
 CARD = "#120f1e"
@@ -113,8 +114,8 @@ class WormholeApp(ctk.CTk):
         btn_archive = ctk.CTkButton(self, text="Archive", command=self.open_archive_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_archive.pack(pady=5)
 
-        btn_other = ctk.CTkButton(self, text="Other", command=self.open_other_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
-        btn_other.pack(pady=5)
+        btn_spreadsheets = ctk.CTkButton(self, text="Spreadsheets", command=self.open_spreadsheets_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
+        btn_spreadsheets.pack(pady=5)
 
 # Functions to open subwindows for each category
 
@@ -145,9 +146,9 @@ def open_docs_window(master):
 
     file_path_var = ctk.StringVar(value="")
 
-    filetypes = [("Docs files", "*.txt;*.pdf;*.docx;*.html;*.md")]
+    filetypes = [("Docs files", "*.txt;*.pdf;*.docx;*.html;*.md;*.odt")]
     if RTF_SUPPORT:
-        filetypes[0] = ("Docs files", "*.txt;*.pdf;*.docx;*.html;*.md;*.rtf")
+        filetypes[0] = ("Docs files", "*.txt;*.pdf;*.docx;*.html;*.md;*.odt;*.rtf")
 
     def select_file():
         fp = filedialog.askopenfilename(title="Select Docs File", filetypes=filetypes)
@@ -162,7 +163,7 @@ def open_docs_window(master):
     file_label.pack(pady=5)
 
     target_var = ctk.StringVar(value="PDF")
-    combo_values = ["PDF", "TXT", "DOCX", "HTML", "MD"]
+    combo_values = ["PDF", "TXT", "DOCX", "HTML", "MD", "ODT"]
     if RTF_SUPPORT:
         combo_values.append("RTF")
     combo = ctk.CTkComboBox(docs_win, values=combo_values, variable=target_var, font=(FONT_FAMILY_REGULAR, 10), width=250)
@@ -201,6 +202,9 @@ def open_docs_window(master):
                     with open(fp, 'r') as f:
                         soup = BeautifulSoup(f.read(), 'html.parser')
                         text = soup.get_text()
+                elif input_ext == "odt":
+                    doc = ezodf.opendoc(fp)
+                    text = '\n'.join(obj.text for obj in doc.body if obj.kind == 'Paragraph')
                 elif input_ext == "rtf" and RTF_SUPPORT:
                     with open(fp, 'r') as f:
                         rtf = f.read()
@@ -231,6 +235,10 @@ def open_docs_window(master):
                     with open(new_file_path, 'w') as f:
                         escaped_text = text.replace('<', '&lt;').replace('>', '&gt;')
                         f.write(f"<html><body><pre>{escaped_text}</pre></body></html>")
+                elif target == "ODT":
+                    doc = ezodf.newdoc(doctype='odt', filename=new_file_path)
+                    doc.body.append(ezodf.Paragraph(text))
+                    doc.save()
                 elif target == "RTF" and RTF_SUPPORT:
                     docs_win.after(0, lambda: messagebox.showerror("Error", "RTF output not supported"))
                     return
@@ -282,7 +290,7 @@ def open_presentations_window(master):
     file_path_var = ctk.StringVar(value="")
 
     def select_file():
-        fp = filedialog.askopenfilename(title="Select Presentation File", filetypes=[("Presentation files", "*.pptx")])
+        fp = filedialog.askopenfilename(title="Select Presentation File", filetypes=[("Presentation files", "*.pptx;*.odp")])
         if fp:
             file_path_var.set(fp)
             file_label.configure(text=os.path.basename(fp))
@@ -294,7 +302,7 @@ def open_presentations_window(master):
     file_label.pack(pady=5)
 
     target_var = ctk.StringVar(value="PDF")
-    combo = ctk.CTkComboBox(pres_win, values=["PPTX", "PDF", "TXT", "DOCX"], variable=target_var, font=(FONT_FAMILY_REGULAR, 10), width=250)
+    combo = ctk.CTkComboBox(pres_win, values=["PPTX", "PDF", "TXT", "DOCX", "ODP"], variable=target_var, font=(FONT_FAMILY_REGULAR, 10), width=250)
     combo.pack(pady=5)
 
     progress_bar = ctk.CTkProgressBar(pres_win, width=250, mode="indeterminate")
@@ -325,6 +333,9 @@ def open_presentations_window(master):
                                     for run in paragraph.runs:
                                         text += run.text
                                     text += '\n'
+                elif input_ext == "odp":
+                    doc = ezodf.opendoc(fp)
+                    text = '\n'.join(obj.text for obj in doc.body if obj.kind == 'Paragraph')
                 else:
                     pres_win.after(0, lambda: messagebox.showerror("Error", "Unsupported input format"))
                     return
@@ -357,6 +368,10 @@ def open_presentations_window(master):
                     tf = txBox.text_frame
                     tf.text = text
                     pres.save(new_file_path)
+                elif target == "ODP":
+                    doc = ezodf.newdoc(doctype='odp', filename=new_file_path)
+                    doc.body.append(ezodf.Paragraph(text))
+                    doc.save()
                 else:
                     pres_win.after(0, lambda: messagebox.showerror("Error", "Unsupported target format"))
                     return
@@ -649,50 +664,50 @@ def open_archive_window(master):
     btn_convert = ctk.CTkButton(arch_win, text="Convert", command=do_convert, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
     btn_convert.pack(pady=5)
 
-def open_other_window(master):
-    other_win = ctk.CTkToplevel(master)
-    other_win.title("Other Conversions")
-    other_win.geometry("300x300")
-    other_win.configure(fg_color=BG)
+def open_spreadsheets_window(master):
+    spreadsheets_win = ctk.CTkToplevel(master)
+    spreadsheets_win.title("Spreadsheets Conversions")
+    spreadsheets_win.geometry("300x300")
+    spreadsheets_win.configure(fg_color=BG)
     # Center the window
-    other_win.update_idletasks()
-    screen_width = other_win.winfo_screenwidth()
-    screen_height = other_win.winfo_screenheight()
+    spreadsheets_win.update_idletasks()
+    screen_width = spreadsheets_win.winfo_screenwidth()
+    screen_height = spreadsheets_win.winfo_screenheight()
     x = (screen_width // 2) - (300 // 2)
     y = (screen_height // 2) - (300 // 2)
-    other_win.geometry(f"300x300+{x}+{y}")
+    spreadsheets_win.geometry(f"300x300+{x}+{y}")
     # Set icon
     if os.path.exists(APP_ICON_PATH):
         try:
-            other_win.after(250, lambda: other_win.iconbitmap(APP_ICON_PATH))
+            spreadsheets_win.after(250, lambda: spreadsheets_win.iconbitmap(APP_ICON_PATH))
         except Exception as e:
-            print(f"Could not set icon for other window: {e}")
+            print(f"Could not set icon for spreadsheets window: {e}")
     # Make it transient and grab set to stay on top
-    other_win.transient(master)
-    other_win.grab_set()
+    spreadsheets_win.transient(master)
+    spreadsheets_win.grab_set()
 
-    label = ctk.CTkLabel(other_win, text="Spreadsheet Converter", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 12))
+    label = ctk.CTkLabel(spreadsheets_win, text="Spreadsheets Converter", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 12))
     label.pack(pady=10)
 
     file_path_var = ctk.StringVar(value="")
 
     def select_file():
-        fp = filedialog.askopenfilename(title="Select Spreadsheet File", filetypes=[("Spreadsheet files", "*.xlsx;*.csv")])
+        fp = filedialog.askopenfilename(title="Select Spreadsheet File", filetypes=[("Spreadsheet files", "*.xlsx;*.csv;*.ods")])
         if fp:
             file_path_var.set(fp)
             file_label.configure(text=os.path.basename(fp))
 
-    btn_select = ctk.CTkButton(other_win, text="Select File", command=select_file, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
+    btn_select = ctk.CTkButton(spreadsheets_win, text="Select File", command=select_file, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
     btn_select.pack(pady=5)
 
-    file_label = ctk.CTkLabel(other_win, text="No file selected", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
+    file_label = ctk.CTkLabel(spreadsheets_win, text="No file selected", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
     file_label.pack(pady=5)
 
     target_var = ctk.StringVar(value="XLSX")
-    combo = ctk.CTkComboBox(other_win, values=["XLSX", "CSV"], variable=target_var, font=(FONT_FAMILY_REGULAR, 10), width=250)
+    combo = ctk.CTkComboBox(spreadsheets_win, values=["XLSX", "CSV", "ODS"], variable=target_var, font=(FONT_FAMILY_REGULAR, 10), width=250)
     combo.pack(pady=5)
 
-    progress_bar = ctk.CTkProgressBar(other_win, width=250, mode="indeterminate")
+    progress_bar = ctk.CTkProgressBar(spreadsheets_win, width=250, mode="indeterminate")
     # Initially not packed
 
     def do_convert():
@@ -718,8 +733,12 @@ def open_other_window(master):
                     with open(fp, 'r', newline='') as f:
                         reader = csv.reader(f)
                         data = list(reader)
+                elif input_ext == "ods":
+                    doc = ezodf.opendoc(fp)
+                    sheet = doc.sheets[0]
+                    data = [[cell.value for cell in row] for row in sheet.rows()]
                 else:
-                    other_win.after(0, lambda: messagebox.showerror("Error", "Unsupported input format"))
+                    spreadsheets_win.after(0, lambda: messagebox.showerror("Error", "Unsupported input format"))
                     return
 
                 if target == "XLSX":
@@ -732,16 +751,25 @@ def open_other_window(master):
                     with open(new_file_path, 'w', newline='') as f:
                         writer = csv.writer(f)
                         writer.writerows(data)
+                elif target == "ODS":
+                    doc = ezodf.newdoc(doctype='ods', filename=new_file_path)
+                    max_cols = max(len(row) for row in data) if data else 1
+                    sht = ezodf.Sheet('Sheet1', size=(len(data), max_cols))
+                    doc.sheets.append(sht)
+                    for r, row in enumerate(data):
+                        for c, val in enumerate(row):
+                            sht[r, c].set_value(val)
+                    doc.save()
                 else:
-                    other_win.after(0, lambda: messagebox.showerror("Error", "Unsupported target format"))
+                    spreadsheets_win.after(0, lambda: messagebox.showerror("Error", "Unsupported target format"))
                     return
-                other_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
+                spreadsheets_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
             except Exception as e:
-                other_win.after(0, lambda: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
+                spreadsheets_win.after(0, lambda: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
             finally:
-                other_win.after(0, progress_bar.stop)
-                other_win.after(0, progress_bar.pack_forget)
-                other_win.after(0, lambda: btn_convert.configure(state="normal"))
+                spreadsheets_win.after(0, progress_bar.stop)
+                spreadsheets_win.after(0, progress_bar.pack_forget)
+                spreadsheets_win.after(0, lambda: btn_convert.configure(state="normal"))
 
         progress_bar.pack(pady=5)
         progress_bar.start()
@@ -749,7 +777,7 @@ def open_other_window(master):
         thread = threading.Thread(target=conversion_thread)
         thread.start()
 
-    btn_convert = ctk.CTkButton(other_win, text="Convert", command=do_convert, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
+    btn_convert = ctk.CTkButton(spreadsheets_win, text="Convert", command=do_convert, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
     btn_convert.pack(pady=5)
 
 # Extend the app class with open methods
@@ -766,8 +794,8 @@ class WormholeApp(WormholeApp):
     def open_archive_window(self):
         open_archive_window(self)
 
-    def open_other_window(self):
-        open_other_window(self)
+    def open_spreadsheets_window(self):
+        open_spreadsheets_window(self)
 
 if __name__ == "__main__":
     app = WormholeApp()

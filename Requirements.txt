@@ -8,3 +8,4 @@ python-docx
 python-pptx
 reportlab
 striprtf
+ezodf
