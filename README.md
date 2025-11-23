@@ -17,7 +17,7 @@
 </p>
 
 <div align="center">
-
+  <a href="https://sourceforge.net/projects/wormhole-file-converter/files/latest/download"><img alt="Download Wormhole" src="https://a.fsdn.com/con/app/sf-download-button" width=276 height=48 srcset="https://a.fsdn.com/con/app/sf-download-button?button_size=2x 2x"></a>
 </div>
 
 <div align="center">
@@ -41,6 +41,8 @@ Built with a clean UI and simple workflow, Wormhole helps you convert documents,
 
 - 🔄 **Multi-Format Conversion** — Convert between a wide variety of file types.
 - ⚡ **Fast & Lightweight** — Optimized for quick conversions without bloat.
+
+[![Flag Counter](https://s01.flagcounter.com/countxl/ZFn0/bg_0D1117/txt_FFFFFF/border_0D1117/columns_6/maxflags_20/viewers_0/labels_1/pageviews_1/flags_0/percent_1/)](https://s01.flagcounter.com/more/ZFn0/)
 
 ---
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-NovaFoundry-6f4e37?style=for-the-badge&logo=buymeacoffee&logoColor=white)](https://buymeacoffee.com/novafoundry)
