@@ -18,12 +18,25 @@ from pptx import Presentation
 from pptx.util import Inches
 import openpyxl
 import csv
+import webbrowser
 try:
     from striprtf.striprtf import rtf_to_text
     RTF_SUPPORT = True
 except ImportError:
     RTF_SUPPORT = False
 import ezodf
+try:
+    from pydub import AudioSegment
+    PYDUB_SUPPORT = True
+except ImportError:
+    PYDUB_SUPPORT = False
+try:
+    from moviepy.editor import VideoFileClip
+    MOVIEPY_SUPPORT = True
+except ImportError:
+    MOVIEPY_SUPPORT = False
+import requests
+import json
 
 BG = "#0a0812"
 CARD = "#120f1e"
@@ -56,6 +69,9 @@ FONT_FILES = [
     "PathwayExtreme_36pt-Thin.ttf"
 ]
 
+VERSION = "1.0.0"
+GITHUB_URL = "https://github.com/DirectedHunt42/Wormhole"
+
 # Set up customtkinter
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
@@ -72,16 +88,17 @@ class WormholeApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Wormhole File Converter")
-        self.geometry("400x650")
+        self.geometry("400x700")
         self.configure(fg_color=BG)
         # Center the main window
         self.update_idletasks()
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
         x = (screen_width // 2) - (400 // 2)
-        y = (screen_height // 2) - (650 // 2)
-        self.geometry(f"400x650+{x}+{y}")
+        y = (screen_height // 2) - (700 // 2)
+        self.geometry(f"400x700+{x}+{y}")
         self._build_ui()
+        self.check_for_updates()
 
     def _build_ui(self):
         if os.path.exists(APP_ICON_PATH):
@@ -116,6 +133,60 @@ class WormholeApp(ctk.CTk):
 
         btn_spreadsheets = ctk.CTkButton(self, text="Spreadsheets", command=self.open_spreadsheets_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_spreadsheets.pack(pady=5)
+
+        # btn_media = ctk.CTkButton(self, text="Media", command=self.open_media_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
+        # btn_media.pack(pady=5)
+
+        about_label = ctk.CTkLabel(self, text=f"Wormhole File Converter\nVersion {VERSION}\n© 2025 Nova Foundry", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
+        about_label.pack(pady=20)
+        support_link = ctk.CTkLabel(self, text="Support Nova Foundry", font=("Nunito", 12, "underline"),
+                                    text_color=ACCENT, fg_color=BG, cursor="hand2")
+        support_link.pack(pady=(0, 12))
+        official_link = ctk.CTkLabel(self, text="Visit Official Website", font=("Nunito", 12, "underline"),
+                                    text_color=ACCENT, fg_color=BG, cursor="hand2")
+        official_link.pack(pady=(0, 12))
+        def open_official_link(event):
+            webbrowser.open_new("https://novafoundry.ca")
+        def open_support_link(event):
+            webbrowser.open_new("https://buymeacoffee.com/novafoundry")
+        support_link.bind("<Button-1>", open_support_link)
+        official_link.bind("<Button-1>", open_official_link)
+
+    def check_for_updates(self):
+        try:
+            response = requests.get("https://api.github.com/repos/DirectedHunt42/Wormhole/releases/latest")
+            if response.status_code == 200:
+                data = response.json()
+                latest_version = data['tag_name']
+                if self.is_newer_version(latest_version, VERSION):
+                    if messagebox.askyesno("Update Available", f"A new version {latest_version} is available. Do you want to download and install it?"):
+                        self.download_and_install_update(data)
+        except Exception:
+            pass  # Fail silently if no internet or other issues
+
+    def is_newer_version(self, latest, current):
+        def parse(v):
+            return tuple(int(x) for x in v.lstrip('v').split('.'))
+        return parse(latest) > parse(current)
+
+    def download_and_install_update(self, data):
+        for asset in data['assets']:
+            if asset['name'] == 'Wormhole_setup.exe':
+                url = asset['browser_download_url']
+                try:
+                    response = requests.get(url, stream=True)
+                    if response.status_code == 200:
+                        with tempfile.NamedTemporaryFile(delete=False, suffix='.exe') as tmp:
+                            for chunk in response.iter_content(chunk_size=1024):
+                                tmp.write(chunk)
+                            tmp_path = tmp.name
+                        os.startfile(tmp_path)
+                        # Optionally exit the app after starting the installer
+                        self.quit()
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to download or run update: {str(e)}")
+                return
+        messagebox.showerror("Error", "Wormhole_setup.exe not found in the latest release.")
 
 # Functions to open subwindows for each category
 
@@ -447,8 +518,11 @@ def open_images_window(master):
     def update_ico_frame(event=None):
         if target_var.get() == "ICO":
             ico_frame.pack(pady=5)
+            img_win.geometry("300x600")
         else:
             ico_frame.pack_forget()
+            img_win.geometry("300x450")
+        img_win.update_idletasks()
 
     combo.bind("<<ComboboxSelected>>", update_ico_frame)
 
@@ -780,6 +854,119 @@ def open_spreadsheets_window(master):
     btn_convert = ctk.CTkButton(spreadsheets_win, text="Convert", command=do_convert, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
     btn_convert.pack(pady=5)
 
+def open_media_window(master):
+    media_win = ctk.CTkToplevel(master)
+    media_win.title("Media Conversions")
+    media_win.geometry("300x300")
+    media_win.configure(fg_color=BG)
+    # Center the window
+    media_win.update_idletasks()
+    screen_width = media_win.winfo_screenwidth()
+    screen_height = media_win.winfo_screenheight()
+    x = (screen_width // 2) - (300 // 2)
+    y = (screen_height // 2) - (300 // 2)
+    media_win.geometry(f"300x300+{x}+{y}")
+    # Set icon
+    if os.path.exists(APP_ICON_PATH):
+        try:
+            media_win.after(250, lambda: media_win.iconbitmap(APP_ICON_PATH))
+        except Exception as e:
+            print(f"Could not set icon for media window: {e}")
+    # Make it transient and grab set to stay on top
+    media_win.transient(master)
+    media_win.grab_set()
+
+    label = ctk.CTkLabel(media_win, text="Media Converter", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 12))
+    label.pack(pady=10)
+
+    file_path_var = ctk.StringVar(value="")
+
+    audio_formats = ["mp3", "wav", "ogg", "flac", "aac", "m4a"]
+    video_formats = ["mp4", "avi", "mkv", "mov"]
+    media_filetypes = [("Media files", "*." + ";*.".join(audio_formats + video_formats))]
+
+    def select_file():
+        fp = filedialog.askopenfilename(title="Select Media File", filetypes=media_filetypes)
+        if fp:
+            input_ext = os.path.splitext(fp)[1].lower()[1:]
+            if input_ext in audio_formats:
+                if not PYDUB_SUPPORT:
+                    messagebox.showerror("Error", "pydub library not installed for audio conversion.\nPlease install pydub and ffmpeg.")
+                    return
+                combo.configure(values=[fmt.upper() for fmt in audio_formats])
+                target_var.set("MP3")
+            elif input_ext in video_formats:
+                if not MOVIEPY_SUPPORT:
+                    messagebox.showerror("Error", "moviepy library not installed for video conversion.\nPlease install moviepy and ffmpeg.")
+                    return
+                combo.configure(values=[fmt.upper() for fmt in video_formats])
+                target_var.set("MP4")
+            else:
+                messagebox.showerror("Error", "Unsupported media format")
+                return
+            file_path_var.set(fp)
+            file_label.configure(text=os.path.basename(fp))
+
+    btn_select = ctk.CTkButton(media_win, text="Select File", command=select_file, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
+    btn_select.pack(pady=5)
+
+    file_label = ctk.CTkLabel(media_win, text="No file selected", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
+    file_label.pack(pady=5)
+
+    target_var = ctk.StringVar(value="")
+    combo = ctk.CTkComboBox(media_win, values=[], variable=target_var, font=(FONT_FAMILY_REGULAR, 10), width=250)
+    combo.pack(pady=5)
+
+    progress_bar = ctk.CTkProgressBar(media_win, width=250, mode="indeterminate")
+    # Initially not packed
+
+    def do_convert():
+        fp = file_path_var.get()
+        if not fp:
+            messagebox.showerror("Error", "No file selected")
+            return
+        target_ext = target_var.get().lower()
+        input_ext = os.path.splitext(fp)[1].lower()[1:]
+        if target_ext == input_ext:
+            messagebox.showwarning("Warning", "Input and output formats are the same")
+            return
+        new_file_path = os.path.splitext(fp)[0] + '.' + target_ext
+
+        def conversion_thread():
+            try:
+                if input_ext in audio_formats:
+                    audio = AudioSegment.from_file(fp)
+                    audio.export(new_file_path, format=target_ext)
+                elif input_ext in video_formats:
+                    video = VideoFileClip(fp)
+                    if target_ext == "mp4":
+                        video.write_videofile(new_file_path, codec="libx264")
+                    elif target_ext == "avi":
+                        video.write_videofile(new_file_path, codec="mpeg4")
+                    elif target_ext == "mkv":
+                        video.write_videofile(new_file_path)
+                    elif target_ext == "mov":
+                        video.write_videofile(new_file_path, codec="libx264")
+                    else:
+                        raise ValueError("Unsupported video target format")
+                    video.close()
+                media_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
+            except Exception as e:
+                media_win.after(0, lambda: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
+            finally:
+                media_win.after(0, progress_bar.stop)
+                media_win.after(0, progress_bar.pack_forget)
+                media_win.after(0, lambda: btn_convert.configure(state="normal"))
+
+        progress_bar.pack(pady=5)
+        progress_bar.start()
+        btn_convert.configure(state="disabled")
+        thread = threading.Thread(target=conversion_thread)
+        thread.start()
+
+    btn_convert = ctk.CTkButton(media_win, text="Convert", command=do_convert, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
+    btn_convert.pack(pady=5)
+
 # Extend the app class with open methods
 class WormholeApp(WormholeApp):
     def open_docs_window(self):
@@ -796,6 +983,9 @@ class WormholeApp(WormholeApp):
 
     def open_spreadsheets_window(self):
         open_spreadsheets_window(self)
+
+    def open_media_window(self):
+        open_media_window(self)
 
 if __name__ == "__main__":
     app = WormholeApp()

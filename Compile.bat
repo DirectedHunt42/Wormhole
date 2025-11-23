@@ -9,16 +9,16 @@ REM ===================================================================
 REM Define all your scripts, icons, and paths here.
 REM Build Toggles
 REM Set to "YES" to compile, any other value to skip
-set "COMPILE_BLACK_HOLE=YES"
+set "COMPILE_WORMHOLE=YES"
 REM Main Directories
 set "OUTPUT_DIR=%SCRIPT_DIR%"
 set "LOG_DIR=%SCRIPT_DIR%\Log"
 REM Requirements File
 set "REQUIREMENTS_FILE=%SCRIPT_DIR%\Requirements.txt"
-REM Script 1: Black Hole
-set "BLACK_HOLE_SCRIPT=Wormhole.py"
-set "BLACK_HOLE_ICON=%SCRIPT_DIR%\Icons\Wormhole_Icon.ico"
-set "BLACK_HOLE_BUILD_NAME=Wormhole"
+REM Script 1: Wormhole
+set "WORMHOLE_SCRIPT=wormhole.py"
+set "WORMHOLE_ICON=%SCRIPT_DIR%\Icons\Wormhole_Icon.ico"
+set "WORMHOLE_BUILD_NAME=wormhole"
 REM (Example) --add-data "path\to\file;destination\folder"
 REM set "DATA_1=%SCRIPT_DIR%\assets\config.json;."
 REM set "DATA_2=%SCRIPT_DIR%\assets\images;images"
@@ -85,15 +85,26 @@ set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=customtkinter"
 set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=tkinter"
 set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=PIL"
 set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=PIL.ImageTk"
-set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=cryptography"
-set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=cryptography.hazmat.backends"
-set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=cryptography.hazmat.primitives.kdf.pbkdf2"
+set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=reportlab"
+set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=pypdf"
+set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=py7zr"
 set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=docx"
+set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=bs4"
+set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=pptx"
+set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=openpyxl"
+set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=ezodf"
 set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=odf"
 set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=odf.opendocument"
 set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=odf.text"
+set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=striprtf"
+set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=pydub"
+set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=moviepy"
+set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=moviepy.editor"
+set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=imageio"
+set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=imageio_ffmpeg"
+set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=decorator"
+set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=proglog"
 set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=urllib.request"
-set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=pptx"
 REM Added for single-instance (pywin32)
 set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=win32event"
 set "HIDDEN_IMPORTS=!HIDDEN_IMPORTS! --hidden-import=win32api"
@@ -119,9 +130,9 @@ REM ===================================================================
 REM 1. Compile Wormhole
 if /I "%COMPILE_WORMHOLE%" == "YES" (
     echo.
-    echo
+    echo.
     echo Compiling %WORMHOLE_SCRIPT%...
-    echo
+    echo.
    
     REM Use 'py -m PyInstaller' to run the module
     py -m PyInstaller --noconfirm --onefile --windowed ^
@@ -131,7 +142,7 @@ if /I "%COMPILE_WORMHOLE%" == "YES" (
         --distpath "%OUTPUT_DIR%" ^
         --workpath "%LOG_DIR%\build\%WORMHOLE_BUILD_NAME%" ^
         --specpath "%LOG_DIR%" ^
-        "%SCRIPT_DIR%\%BLACK_HOLE_SCRIPT%"
+        "%SCRIPT_DIR%\%WORMHOLE_SCRIPT%"
     REM Check for failure
     if %errorlevel% neq 0 (
         echo.

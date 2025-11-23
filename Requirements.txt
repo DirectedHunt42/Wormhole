@@ -9,3 +9,6 @@ python-pptx
 reportlab
 striprtf
 ezodf
+moviepy
+pydub
+requests
