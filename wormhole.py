@@ -23,17 +23,13 @@ import openpyxl
 import csv
 import webbrowser
 import subprocess
+import re
 try:
     from striprtf.striprtf import rtf_to_text
     RTF_SUPPORT = True
 except ImportError:
     RTF_SUPPORT = False
 import ezodf
-try:
-    from moviepy.editor import VideoFileClip
-    MOVIEPY_SUPPORT = True
-except ImportError:
-    MOVIEPY_SUPPORT = False
 import requests
 import json
 try:
@@ -78,7 +74,7 @@ FONT_FILES = [
     "PathwayExtreme_36pt-Thin.ttf"
 ]
 
-VERSION = "1.0.3"
+VERSION = "1.1.0"
 GITHUB_URL = "https://github.com/DirectedHunt42/Wormhole"
 
 # Set up customtkinter
@@ -146,8 +142,8 @@ class WormholeApp(ctk.CTk):
         btn_3d = ctk.CTkButton(self, text="3D Models", command=self.open_3d_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_3d.pack(pady=5)
 
-        # btn_media = ctk.CTkButton(self, text="Media", command=self.open_media_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
-        # btn_media.pack(pady=5)
+        btn_media = ctk.CTkButton(self, text="Media", command=self.open_media_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
+        btn_media.pack(pady=5)
 
         about_label = ctk.CTkLabel(self, text=f"Wormhole File Converter\nVersion {VERSION}\n© 2025 Nova Foundry", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
         about_label.pack(pady=20)
@@ -962,6 +958,22 @@ def open_3d_window(master):
     btn_convert = ctk.CTkButton(threed_win, text="Convert", command=do_convert, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
     btn_convert.pack(pady=5)
 
+def run_ffmpeg(cmd, progress_cb, duration):
+    process = subprocess.Popen(cmd, stderr=subprocess.PIPE, universal_newlines=True)
+    while True:
+        line = process.stderr.readline().strip()
+        if not line and process.poll() is not None:
+            break
+        if line:
+            time_match = re.search(r'time=(\d{2}):(\d{2}):(\d{2}\.\d{2})', line)
+            if time_match:
+                h, m, s = map(float, time_match.groups())
+                time = h * 3600 + m * 60 + s
+                progress_cb(time / duration)
+    process.wait()
+    if process.returncode != 0:
+        raise RuntimeError(f"ffmpeg failed with code {process.returncode}")
+
 def open_media_window(master):
     media_win = ctk.CTkToplevel(master)
     media_win.title("Media Conversions")
@@ -1004,10 +1016,9 @@ def open_media_window(master):
                 combo.configure(values=[fmt.upper() for fmt in audio_formats])
                 target_var.set("MP3")
             elif input_ext in video_formats:
-                if not MOVIEPY_SUPPORT:
-                    messagebox.showerror("Error", "moviepy library not installed for video conversion.\nPlease install moviepy.")
-                    return
-                combo.configure(values=[fmt.upper() for fmt in video_formats])
+                video_values = [fmt.upper() for fmt in video_formats]
+                audio_values = [fmt.upper() + " (extract audio)" for fmt in audio_formats]
+                combo.configure(values=video_values + audio_values)
                 target_var.set("MP4")
             else:
                 messagebox.showerror("Error", "Unsupported media format")
@@ -1033,7 +1044,13 @@ def open_media_window(master):
         if not fp:
             messagebox.showerror("Error", "No file selected")
             return
-        target_ext = target_var.get().lower()
+        target = target_var.get()
+        if "(extract audio)" in target:
+            is_extract = True
+            target_ext = target.split(" ")[0].lower()
+        else:
+            is_extract = False
+            target_ext = target.lower()
         input_ext = os.path.splitext(fp)[1].lower()[1:]
         if target_ext == input_ext:
             messagebox.showwarning("Warning", "Input and output formats are the same")
@@ -1042,31 +1059,50 @@ def open_media_window(master):
 
         def conversion_thread():
             try:
-                if input_ext in audio_formats:
-                    if not has_ffmpeg:
-                        raise RuntimeError("ffmpeg not found in PATH. Please install ffmpeg and add it to your PATH.")
-                    from pydub import AudioSegment  # Import here to delay until needed
-                    audio = AudioSegment.from_file(fp)
-                    audio.export(new_file_path, format=target_ext)
-                elif input_ext in video_formats:
-                    if not has_ffmpeg:
-                        raise RuntimeError("ffmpeg not found in PATH. Please install ffmpeg and add it to your PATH.")
-                    from moviepy.editor import VideoFileClip  # Import here if not already
-                    video = VideoFileClip(fp)
-                    if target_ext == "mp4":
-                        video.write_videofile(new_file_path, codec="libx264")
-                    elif target_ext == "avi":
-                        video.write_videofile(new_file_path, codec="mpeg4")
-                    elif target_ext == "mkv":
-                        video.write_videofile(new_file_path)
-                    elif target_ext == "mov":
-                        video.write_videofile(new_file_path, codec="libx264")
+                if not has_ffmpeg:
+                    raise RuntimeError("ffmpeg not found in PATH. Please install ffmpeg and add it to your PATH.")
+                # Get duration using ffprobe
+                duration = None
+                try:
+                    ffprobe_cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', fp]
+                    duration_str = subprocess.check_output(ffprobe_cmd).decode().strip()
+                    duration = float(duration_str)
+                except Exception as e:
+                    print(f"Could not get duration: {e}")
+                    media_win.after(0, lambda: progress_bar.configure(mode="indeterminate"))
+                    media_win.after(0, lambda: progress_bar.start())
+                else:
+                    media_win.after(0, lambda: progress_bar.configure(mode="determinate"))
+                    media_win.after(0, lambda: progress_bar.set(0))
+
+                def local_progress_cb(value):
+                    media_win.after(0, lambda: progress_bar.set(value))
+
+                if is_extract:
+                    audio_cmd = ['ffmpeg', '-y', '-i', fp, '-vn', new_file_path]
+                    muted_path = os.path.splitext(fp)[0] + '_no_audio' + os.path.splitext(fp)[1]
+                    video_cmd = ['ffmpeg', '-y', '-i', fp, '-an', muted_path]
+                    if duration:
+                        def audio_prog(time):
+                            local_progress_cb(time * 0.5)
+                        run_ffmpeg(audio_cmd, audio_prog, duration)
+                        def video_prog(time):
+                            local_progress_cb(0.5 + time * 0.5)
+                        run_ffmpeg(video_cmd, video_prog, duration)
                     else:
-                        raise ValueError("Unsupported video target format")
-                    video.close()
-                media_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
-            except ImportError as e:
-                media_win.after(0, lambda e=e: messagebox.showerror("Error", f"Library not installed: {str(e)}. Please install the required library (pydub or moviepy)."))
+                        subprocess.check_call(audio_cmd)
+                        subprocess.check_call(video_cmd)
+                    success_msg = f"Audio extracted to: {new_file_path}\nVideo without audio to: {muted_path}"
+                else:
+                    cmd = ['ffmpeg', '-y', '-i', fp, new_file_path]
+                    if duration:
+                        def conv_prog(time):
+                            local_progress_cb(time)
+                        run_ffmpeg(cmd, conv_prog, duration)
+                    else:
+                        subprocess.check_call(cmd)
+                    success_msg = f"File converted to: {new_file_path}"
+                media_win.after(0, lambda: messagebox.showinfo("Success", success_msg))
             except Exception as e:
                 media_win.after(0, lambda e=e: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
             finally:
@@ -1075,7 +1111,6 @@ def open_media_window(master):
                 media_win.after(0, lambda: btn_convert.configure(state="normal"))
 
         progress_bar.pack(pady=5)
-        progress_bar.start()
         btn_convert.configure(state="disabled")
         thread = threading.Thread(target=conversion_thread)
         thread.start()
