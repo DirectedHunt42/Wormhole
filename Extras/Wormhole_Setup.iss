@@ -52,29 +52,111 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 [Code]
-function PrepareToInstall(var NeedsRestart: Boolean): String;
+
+// Function to handle Pandoc installation
+function InstallPandoc(): String;
 var
   ResultCode: Integer;
+  PandocMsiPath: String;
 begin
-  // Check if Pandoc is already installed by trying to run 'pandoc --version'
+  // 1. Check if Pandoc is already installed
   if Exec(ExpandConstant('{cmd}'), '/C pandoc --version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
   begin
-    // Pandoc is already installed, skip installation
-    Result := '';
+    Result := ''; // Already installed, success
     Exit;
   end;
 
-  // If not installed, proceed with installation
-  ExtractTemporaryFile('pandoc-3.8.2.1-windows-x86_64.msi');
-  if not Exec('msiexec.exe', '/i "' + ExpandConstant('{tmp}\pandoc-3.8.2.1-windows-x86_64.msi') + '"', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+  // 2. If not installed, proceed with installation.
+  // The file is already extracted to {tmp} by the [Files] section.
+  PandocMsiPath := ExpandConstant('{tmp}\pandoc-3.8.2.1-windows-x86_64.msi');
+  
+  // Running silent install
+  if not Exec('msiexec.exe', '/i "' + PandocMsiPath + '" /quiet /norestart', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
   begin
-    Result := 'Failed to execute msiexec. Code: ' + IntToStr(ResultCode);
+    Result := 'Failed to execute msiexec for Pandoc. Code: ' + IntToStr(ResultCode);
     Exit;
   end;
+  
   if ResultCode <> 0 then
   begin
     Result := 'Pandoc installation failed. Code: ' + IntToStr(ResultCode);
     Exit;
   end;
-  Result := '';
+  
+  Result := ''; // Success
+end;
+
+// Function to handle FFmpeg installation
+function InstallFFmpeg(): String;
+var
+  ResultCode: Integer;
+begin
+  // 1. Check if FFmpeg is already installed
+  if Exec(ExpandConstant('{cmd}'), '/C ffmpeg -version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
+  begin
+    Result := ''; // Already installed, success
+    Exit;
+  end;
+
+  // 2. If not, check if Chocolatey is installed
+  if not Exec(ExpandConstant('{cmd}'), '/C choco -v', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
+  begin
+    // Choco is not installed. Inform the user.
+    MsgBox('FFmpeg (a required dependency) is not installed.' + #13#10 + #13#10 +
+           'This installer can use Chocolatey (choco) to install it, but choco was not found on your system.' + #13#10 + #13#10 +
+           'Please install FFmpeg manually, or install Chocolatey and re-run this setup.',
+           mbInformation, MB_OK);
+    Result := ''; // Don't abort setup, just inform
+    Exit;
+  end;
+
+  // 3. Choco is installed, but FFmpeg is not. Install it.
+  // Show a marquee progress bar since choco can take a while
+  WizardForm.StatusLabel.Caption := 'Chocolatey is found. Installing FFmpeg (this may take a few minutes)...';
+  WizardForm.ProgressGauge.Style := npbstMarquee;
+  try
+    // Run choco install. Using SW_SHOW lets the user see choco's progress.
+    if not Exec(ExpandConstant('{cmd}'), '/C choco install ffmpeg -y', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+    begin
+      Result := 'Failed to launch Chocolatey to install FFmpeg. Code: ' + IntToStr(ResultCode);
+      Exit;
+    end;
+    
+    if ResultCode <> 0 then
+    begin
+      Result := 'Chocolatey failed to install FFmpeg. Code: ' + IntToStr(ResultCode);
+      Exit;
+    end;
+  finally
+    // Restore normal progress bar and clear status
+    WizardForm.ProgressGauge.Style := npbstNormal;
+    WizardForm.StatusLabel.Caption := '';
+  end;
+  
+  Result := ''; // Success
+end;
+
+// Main function called by Setup
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  PandocResult: String;
+  FFmpegResult: String;
+begin
+  // First, check/install Pandoc
+  PandocResult := InstallPandoc();
+  if PandocResult <> '' then
+  begin
+    Result := PandocResult; // Return Pandoc error
+    Exit;
+  end;
+  
+  // Second, check/install FFmpeg
+  FFmpegResult := InstallFFmpeg();
+  if FFmpegResult <> '' then
+  begin
+    Result := FFmpegResult; // Return FFmpeg error
+    Exit;
+  end;
+
+  Result := ''; // All good, both are installed
 end;

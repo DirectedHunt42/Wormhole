@@ -91,15 +91,15 @@ class WormholeApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Wormhole File Converter")
-        self.geometry("400x700")
+        self.geometry("400x750")
         self.configure(fg_color=BG)
         # Center the main window
         self.update_idletasks()
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
         x = (screen_width // 2) - (400 // 2)
-        y = (screen_height // 2) - (700 // 2)
-        self.geometry(f"400x700+{x}+{y}")
+        y = (screen_height // 2) - (750 // 2)
+        self.geometry(f"400x750+{x}+{y}")
         self._build_ui()
         self.check_for_updates()
 
@@ -137,8 +137,8 @@ class WormholeApp(ctk.CTk):
         btn_spreadsheets = ctk.CTkButton(self, text="Spreadsheets", command=self.open_spreadsheets_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_spreadsheets.pack(pady=5)
 
-        # btn_media = ctk.CTkButton(self, text="Media", command=self.open_media_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
-        # btn_media.pack(pady=5)
+        btn_media = ctk.CTkButton(self, text="Media", command=self.open_media_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
+        btn_media.pack(pady=5)
 
         about_label = ctk.CTkLabel(self, text=f"Wormhole File Converter\nVersion {VERSION}\n© 2025 Nova Foundry", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
         about_label.pack(pady=20)
