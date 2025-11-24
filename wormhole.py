@@ -5,6 +5,8 @@ from tkinter import filedialog, messagebox
 from PIL import Image
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph
+from reportlab.lib.styles import getSampleStyleSheet
 from pypdf import PdfReader
 import py7zr
 import zipfile
@@ -19,6 +21,7 @@ from pptx.util import Inches
 import openpyxl
 import csv
 import webbrowser
+import subprocess
 try:
     from striprtf.striprtf import rtf_to_text
     RTF_SUPPORT = True
@@ -191,6 +194,10 @@ class WormholeApp(ctk.CTk):
 # Functions to open subwindows for each category
 
 def open_docs_window(master):
+    import shutil
+    has_pandoc = shutil.which("pandoc") is not None
+    print (f"Pandoc found: {has_pandoc}")
+
     docs_win = ctk.CTkToplevel(master)
     docs_win.title("Docs Conversions")
     docs_win.geometry("300x300")
@@ -217,9 +224,10 @@ def open_docs_window(master):
 
     file_path_var = ctk.StringVar(value="")
 
-    filetypes = [("Docs files", "*.txt;*.pdf;*.docx;*.html;*.md;*.odt")]
-    if RTF_SUPPORT:
-        filetypes[0] = ("Docs files", "*.txt;*.pdf;*.docx;*.html;*.md;*.odt;*.rtf")
+    base_filetypes = "*.txt;*.pdf;*.docx;*.html;*.md;*.odt"
+    if has_pandoc or RTF_SUPPORT:
+        base_filetypes += ";*.rtf"
+    filetypes = [("Docs files", base_filetypes)]
 
     def select_file():
         fp = filedialog.askopenfilename(title="Select Docs File", filetypes=filetypes)
@@ -233,9 +241,9 @@ def open_docs_window(master):
     file_label = ctk.CTkLabel(docs_win, text="No file selected", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
     file_label.pack(pady=5)
 
-    target_var = ctk.StringVar(value="PDF")
-    combo_values = ["PDF", "TXT", "DOCX", "HTML", "MD", "ODT"]
-    if RTF_SUPPORT:
+    target_var = ctk.StringVar(value="TXT")
+    combo_values = ["TXT", "DOCX", "HTML", "MD", "ODT"]
+    if has_pandoc:
         combo_values.append("RTF")
     combo = ctk.CTkComboBox(docs_win, values=combo_values, variable=target_var, font=(FONT_FAMILY_REGULAR, 10), width=250)
     combo.pack(pady=5)
@@ -257,68 +265,77 @@ def open_docs_window(master):
 
         def conversion_thread():
             try:
+                use_pandoc = has_pandoc and input_ext != "pdf" and target != "TXT" and target != "MD"
                 text = ""
-                if input_ext in ["txt", "md"]:
-                    with open(fp, 'r') as f:
-                        text = f.read()
-                elif input_ext == "pdf":
-                    reader = PdfReader(fp)
-                    text = ''
-                    for page in reader.pages:
-                        text += page.extract_text() + '\n'
-                elif input_ext == "docx":
-                    doc = Document(fp)
-                    text = '\n'.join([para.text for para in doc.paragraphs])
-                elif input_ext == "html":
-                    with open(fp, 'r') as f:
-                        soup = BeautifulSoup(f.read(), 'html.parser')
-                        text = soup.get_text()
-                elif input_ext == "odt":
-                    doc = ezodf.opendoc(fp)
-                    text = '\n'.join(obj.text for obj in doc.body if obj.kind == 'Paragraph')
-                elif input_ext == "rtf" and RTF_SUPPORT:
-                    with open(fp, 'r') as f:
-                        rtf = f.read()
-                    text = rtf_to_text(rtf)
-                else:
-                    docs_win.after(0, lambda: messagebox.showerror("Error", "Unsupported input format"))
-                    return
+                if not use_pandoc:
+                    if input_ext in ["txt", "md"]:
+                        with open(fp, 'r') as f:
+                            text = f.read()
+                    elif input_ext == "pdf":
+                        reader = PdfReader(fp)
+                        text = ''
+                        for page in reader.pages:
+                            text += page.extract_text() + '\n'
+                    elif input_ext == "docx":
+                        doc = Document(fp)
+                        text = '\n'.join([para.text for para in doc.paragraphs])
+                    elif input_ext == "html":
+                        with open(fp, 'r') as f:
+                            soup = BeautifulSoup(f.read(), 'html.parser')
+                            text = soup.get_text()
+                    elif input_ext == "odt":
+                        doc = ezodf.opendoc(fp)
+                        text = '\n'.join(obj.text or '' for obj in doc.body if obj.kind == 'Paragraph')
+                    elif input_ext == "rtf":
+                        if RTF_SUPPORT:
+                            with open(fp, 'r') as f:
+                                rtf = f.read()
+                            text = rtf_to_text(rtf)
+                        else:
+                            raise ValueError("RTF input not supported without striprtf or Pandoc")
+                    else:
+                        raise ValueError("Unsupported input format")
 
-                if target in ["TXT", "MD"]:
-                    with open(new_file_path, 'w') as f:
-                        f.write(text)
-                elif target == "PDF":
-                    c = canvas.Canvas(new_file_path, pagesize=letter)
-                    width, height = letter
-                    y = height - 50  # Start from top with margin
-                    for line in text.splitlines():
-                        c.drawString(50, y, line.strip())
-                        y -= 15  # Line spacing
-                        if y < 50:  # Simple page break handling
-                            c.showPage()
-                            y = height - 50
-                    c.save()
-                elif target == "DOCX":
-                    doc = Document()
-                    doc.add_paragraph(text)
-                    doc.save(new_file_path)
-                elif target == "HTML":
-                    with open(new_file_path, 'w') as f:
-                        escaped_text = text.replace('<', '&lt;').replace('>', '&gt;')
-                        f.write(f"<html><body><pre>{escaped_text}</pre></body></html>")
-                elif target == "ODT":
-                    doc = ezodf.newdoc(doctype='odt', filename=new_file_path)
-                    doc.body.append(ezodf.Paragraph(text))
-                    doc.save()
-                elif target == "RTF" and RTF_SUPPORT:
-                    docs_win.after(0, lambda: messagebox.showerror("Error", "RTF output not supported"))
-                    return
+                    if target in ["TXT", "MD"]:
+                        with open(new_file_path, 'w') as f:
+                            f.write(text)
+                    # elif target == "PDF":
+                    #     doc = SimpleDocTemplate(new_file_path, pagesize=letter,
+                    #                             rightMargin=72, leftMargin=72,
+                    #                             topMargin=72, bottomMargin=72)
+                    #     story = []
+                    #     styles = getSampleStyleSheet()
+                    #     paragraphs = text.split('\n')
+                    #     for p_text in paragraphs:
+                    #         if p_text.strip():
+                    #             p = Paragraph(p_text, styles["Normal"])
+                    #             story.append(p)
+                    #     doc.build(story)
+                    elif target == "DOCX":
+                        doc = Document()
+                        for para_text in text.split('\n'):
+                            doc.add_paragraph(para_text)
+                        doc.save(new_file_path)
+                    elif target == "HTML":
+                        with open(new_file_path, 'w') as f:
+                            escaped_text = text.replace('<', '&lt;').replace('>', '&gt;')
+                            f.write(f"<html><body><pre>{escaped_text}</pre></body></html>")
+                    elif target == "ODT":
+                        doc = ezodf.newdoc(doctype='odt', filename=new_file_path)
+                        for para_text in text.split('\n'):
+                            doc.body.append(ezodf.Paragraph(para_text))
+                        doc.save()
+                    elif target == "RTF":
+                        raise ValueError("RTF output not supported without Pandoc")
+                    else:
+                        raise ValueError("Unsupported target format")
                 else:
-                    docs_win.after(0, lambda: messagebox.showerror("Error", "Unsupported target format"))
-                    return
+                    subprocess.run(["pandoc", fp, "-o", new_file_path], check=True)
                 docs_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
+            except FileNotFoundError:
+                docs_win.after(0, lambda: messagebox.showerror("Error", "Pandoc not found. Please install Pandoc for full formatting support."))
             except Exception as e:
-                docs_win.after(0, lambda: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
+                docs_win.after(0, lambda e=e: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
             finally:
                 docs_win.after(0, progress_bar.stop)
                 docs_win.after(0, progress_bar.pack_forget)
@@ -406,7 +423,7 @@ def open_presentations_window(master):
                                     text += '\n'
                 elif input_ext == "odp":
                     doc = ezodf.opendoc(fp)
-                    text = '\n'.join(obj.text for obj in doc.body if obj.kind == 'Paragraph')
+                    text = '\n'.join(obj.text or '' for obj in doc.body if obj.kind == 'Paragraph')
                 else:
                     pres_win.after(0, lambda: messagebox.showerror("Error", "Unsupported input format"))
                     return
@@ -448,7 +465,7 @@ def open_presentations_window(master):
                     return
                 pres_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
             except Exception as e:
-                pres_win.after(0, lambda: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
+                pres_win.after(0, lambda e=e: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
             finally:
                 pres_win.after(0, progress_bar.stop)
                 pres_win.after(0, progress_bar.pack_forget)
@@ -573,7 +590,7 @@ def open_images_window(master):
                     raise ValueError("Unsupported target format")
                 img_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
             except Exception as e:
-                img_win.after(0, lambda: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
+                img_win.after(0, lambda e=e: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
             finally:
                 img_win.after(0, progress_bar.stop)
                 img_win.after(0, progress_bar.pack_forget)
@@ -722,7 +739,7 @@ def open_archive_window(master):
                                 t.add(os.path.join(root, file), os.path.relpath(os.path.join(root, file), temp_dir))
                 arch_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
             except Exception as e:
-                arch_win.after(0, lambda: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
+                arch_win.after(0, lambda e=e: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
             finally:
                 shutil.rmtree(temp_dir)
                 arch_win.after(0, progress_bar.stop)
@@ -802,7 +819,7 @@ def open_spreadsheets_window(master):
                 if input_ext == "xlsx":
                     wb = openpyxl.load_workbook(fp)
                     sheet = wb.active
-                    data = [[cell.value for cell in row] for row in sheet.rows]
+                    data = [[cell.value or '' for cell in row] for row in sheet.rows]
                 elif input_ext == "csv":
                     with open(fp, 'r', newline='') as f:
                         reader = csv.reader(f)
@@ -810,7 +827,7 @@ def open_spreadsheets_window(master):
                 elif input_ext == "ods":
                     doc = ezodf.opendoc(fp)
                     sheet = doc.sheets[0]
-                    data = [[cell.value for cell in row] for row in sheet.rows()]
+                    data = [[cell.value or '' for cell in row] for row in sheet.rows()]
                 else:
                     spreadsheets_win.after(0, lambda: messagebox.showerror("Error", "Unsupported input format"))
                     return
@@ -839,7 +856,7 @@ def open_spreadsheets_window(master):
                     return
                 spreadsheets_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
             except Exception as e:
-                spreadsheets_win.after(0, lambda: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
+                spreadsheets_win.after(0, lambda e=e: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
             finally:
                 spreadsheets_win.after(0, progress_bar.stop)
                 spreadsheets_win.after(0, progress_bar.pack_forget)
@@ -952,7 +969,7 @@ def open_media_window(master):
                     video.close()
                 media_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
             except Exception as e:
-                media_win.after(0, lambda: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
+                media_win.after(0, lambda e=e: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
             finally:
                 media_win.after(0, progress_bar.stop)
                 media_win.after(0, progress_bar.pack_forget)
