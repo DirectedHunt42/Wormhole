@@ -6,6 +6,7 @@
 #define MyAppPublisher "Nova Foundry"
 #define MyAppURL "novafoundry.ca/wormhole"
 #define MyAppExeName "wormhole.exe"
+
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
 ; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
@@ -28,7 +29,7 @@ ArchitecturesAllowed=x64compatible
 ; the 64-bit view of the registry.
 ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
-LicenseFile=C:\Users\jackp\Github Repositories\Wormhole\LICENSE.txt
+LicenseFile=C:\Users\jackp\Downloads\Wormhole\LICENSE.txt
 ; Uncomment the following line to run in non administrative install mode (install for current user only).
 ;PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
@@ -37,52 +38,130 @@ OutputBaseFilename=Wormhole_setup
 SetupIconFile=C:\Users\jackp\Downloads\Installer Icon template.ico
 SolidCompression=yes
 WizardStyle=modern dynamic
+
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
+
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+
 [Files]
-Source: "C:\Users\jackp\Downloads\pandoc-3.8.2.1-windows-x86_64.msi"; DestDir: "{tmp}"; Flags: deleteafterinstall
 Source: "C:\Users\jackp\Downloads\Wormhole\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "C:\Users\jackp\Downloads\Wormhole\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
+
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent runascurrentuser
+
 [Code]
+var
+  InstalledPandoc: Boolean;
+  InstalledFFmpeg: Boolean;
 
 // Function to handle Pandoc installation
 function InstallPandoc(): String;
 var
   ResultCode: Integer;
   PandocMsiPath: String;
+  LogPath: String;
+  DownloadScript: String;
+  PandocExePath: String;
 begin
-  // 1. Check if Pandoc is already installed
+  InstalledPandoc := False;
+  // 1. Check if Pandoc is already installed via PATH
   if Exec(ExpandConstant('{cmd}'), '/C pandoc --version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
   begin
     Result := ''; // Already installed, success
     Exit;
   end;
-
-  // 2. If not installed, proceed with installation.
-  // The file is already extracted to {tmp} by the [Files] section.
-  PandocMsiPath := ExpandConstant('{tmp}\pandoc-3.8.2.1-windows-x86_64.msi');
   
-  // Running silent install
-  if not Exec('msiexec.exe', '/i "' + PandocMsiPath + '" /quiet /norestart', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+  // 2. Download the latest Pandoc MSI using PowerShell
+  PandocMsiPath := ExpandConstant('{tmp}\pandoc-latest-windows-x86_64.msi');
+  LogPath := ExpandConstant('{tmp}\pandoc_download.log');
+  
+  // PowerShell script to fetch latest release and download MSI
+  DownloadScript := 
+    '$ProgressPreference = ''SilentlyContinue''; ' + 
+    'try { ' +
+    '  $latest = (Invoke-WebRequest -Uri https://api.github.com/repos/jgm/pandoc/releases/latest -UseBasicParsing).Content | ConvertFrom-Json; ' +
+    '  $asset = $latest.assets | Where-Object { $_.name -like ''pandoc-*-windows-x86_64.msi'' }; ' +
+    '  if ($asset -eq $null) { throw ''MSI asset not found in latest release.''; } ' +
+    '  $downloadUrl = $asset.browser_download_url; ' +
+    '  Invoke-WebRequest -Uri $downloadUrl -OutFile ''' + PandocMsiPath + '''; ' +
+    '} catch { ' +
+    '  $_.Exception.Message | Out-File -FilePath ''' + LogPath + '''; ' +
+    '  exit 1; ' +
+    '}';
+  
+  WizardForm.StatusLabel.Caption := 'Downloading latest Pandoc MSI (this may take a moment)...';
+  WizardForm.ProgressGauge.Style := npbstMarquee;
+  try
+    if not Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -Command "' + DownloadScript + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    begin
+      Result := 'Failed to execute PowerShell for download. Code: ' + IntToStr(ResultCode);
+      Exit;
+    end;
+    if ResultCode <> 0 then
+    begin
+      Result := 'Download failed. Code: ' + IntToStr(ResultCode) + '. Check log at ' + LogPath + ' for details.';
+      Exit;
+    end;
+  finally
+    WizardForm.ProgressGauge.Style := npbstNormal;
+    WizardForm.StatusLabel.Caption := '';
+  end;
+  
+  // Check if the MSI file was downloaded
+  if not FileExists(PandocMsiPath) then
   begin
-    Result := 'Failed to execute msiexec for Pandoc. Code: ' + IntToStr(ResultCode);
+    Result := 'Pandoc MSI download failed or file not found.';
     Exit;
   end;
   
+  // 3. Install the downloaded MSI (silent, hidden, for all users) with logging
+  LogPath := ExpandConstant('{tmp}\pandoc_install.log'); // Reuse for install log
+  if not Exec('msiexec.exe', '/i "' + PandocMsiPath + '" ALLUSERS=1 /qn /norestart /L*V "' + LogPath + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  begin
+    Result := 'Failed to execute msiexec for Pandoc. Code: ' + IntToStr(ResultCode) + '. Check log at ' + LogPath;
+    Exit;
+  end;
   if ResultCode <> 0 then
   begin
-    Result := 'Pandoc installation failed. Code: ' + IntToStr(ResultCode);
+    Result := 'Pandoc installation failed. Code: ' + IntToStr(ResultCode) + '. Check log at ' + LogPath;
     Exit;
   end;
   
+  // 4. Verify installation using full path (since PATH may not update yet)
+  // Primary path for 64-bit all-users install
+  PandocExePath := ExpandConstant('{commonpf}\Pandoc\pandoc.exe');
+  if not FileExists(PandocExePath) then
+  begin
+    // Fallback: Check x86 Program Files (older or misconfigured installs)
+    PandocExePath := ExpandConstant('{pf}\Pandoc\pandoc.exe');
+    if not FileExists(PandocExePath) then
+    begin
+      // Fallback: Per-user install (if ALLUSERS failed)
+      PandocExePath := ExpandConstant('{localappdata}\Programs\Pandoc\pandoc.exe');
+      if not FileExists(PandocExePath) then
+      begin
+        Result := 'Pandoc installed but executable not found in expected paths. Check log at ' + LogPath;
+        Exit;
+      end;
+    end;
+  end;
+  
+  // Run --version with full path
+  if not Exec(PandocExePath, '--version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
+  begin
+    Result := 'Pandoc installed but --version failed even with full path. Code: ' + IntToStr(ResultCode);
+    Exit;
+  end;
+  
+  InstalledPandoc := True; // Flag for restart
   Result := ''; // Success
 end;
 
@@ -90,14 +169,15 @@ end;
 function InstallFFmpeg(): String;
 var
   ResultCode: Integer;
+  FFmpegExePath: String;
 begin
-  // 1. Check if FFmpeg is already installed
+  InstalledFFmpeg := False;
+  // 1. Check if FFmpeg is already installed via PATH
   if Exec(ExpandConstant('{cmd}'), '/C ffmpeg -version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
   begin
     Result := ''; // Already installed, success
     Exit;
   end;
-
   // 2. If not, check if Chocolatey is installed
   if not Exec(ExpandConstant('{cmd}'), '/C choco -v', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
   begin
@@ -106,10 +186,12 @@ begin
            'This installer can use Chocolatey (choco) to install it, but choco was not found on your system.' + #13#10 + #13#10 +
            'Please install FFmpeg manually, or install Chocolatey and re-run this setup.',
            mbInformation, MB_OK);
+    // Optional: Abort if FFmpeg is required (uncomment if needed)
+    // Result := 'FFmpeg installation required but Chocolatey not found.';
+    // Exit;
     Result := ''; // Don't abort setup, just inform
     Exit;
   end;
-
   // 3. Choco is installed, but FFmpeg is not. Install it.
   // Show a marquee progress bar since choco can take a while
   WizardForm.StatusLabel.Caption := 'Chocolatey is found. Installing FFmpeg (this may take a few minutes)...';
@@ -121,7 +203,6 @@ begin
       Result := 'Failed to launch Chocolatey to install FFmpeg. Code: ' + IntToStr(ResultCode);
       Exit;
     end;
-    
     if ResultCode <> 0 then
     begin
       Result := 'Chocolatey failed to install FFmpeg. Code: ' + IntToStr(ResultCode);
@@ -132,7 +213,20 @@ begin
     WizardForm.ProgressGauge.Style := npbstNormal;
     WizardForm.StatusLabel.Caption := '';
   end;
+  // 4. Verify installation using full path (in case PATH not updated)
+  FFmpegExePath := 'C:\ProgramData\chocolatey\bin\ffmpeg.exe';
+  if not FileExists(FFmpegExePath) then
+  begin
+    Result := 'FFmpeg installed but executable not found in expected path.';
+    Exit;
+  end;
+  if not Exec(FFmpegExePath, '-version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
+  begin
+    Result := 'FFmpeg installed but -version failed even with full path. Code: ' + IntToStr(ResultCode);
+    Exit;
+  end;
   
+  InstalledFFmpeg := True; // Flag for restart
   Result := ''; // Success
 end;
 
@@ -142,6 +236,9 @@ var
   PandocResult: String;
   FFmpegResult: String;
 begin
+  InstalledPandoc := False;
+  InstalledFFmpeg := False;
+  
   // First, check/install Pandoc
   PandocResult := InstallPandoc();
   if PandocResult <> '' then
@@ -149,7 +246,6 @@ begin
     Result := PandocResult; // Return Pandoc error
     Exit;
   end;
-  
   // Second, check/install FFmpeg
   FFmpegResult := InstallFFmpeg();
   if FFmpegResult <> '' then
@@ -157,6 +253,10 @@ begin
     Result := FFmpegResult; // Return FFmpeg error
     Exit;
   end;
-
+  
+  // If either was freshly installed, request restart for PATH updates
+  if InstalledPandoc or InstalledFFmpeg then
+    NeedsRestart := True;
+  
   Result := ''; // All good, both are installed
 end;
