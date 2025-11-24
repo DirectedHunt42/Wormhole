@@ -1,4 +1,5 @@
-('E:\\Projects\\Programming\\Wormhole\\Log\\build\\wormhole\\wormhole\\PYZ-00.pyz',
+('C:\\Users\\jackp\\Github '
+ 'Repositories\\Wormhole\\Log\\build\\wormhole\\wormhole\\PYZ-00.pyz',
  [('Cryptodome',
    'C:\\Users\\jackp\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\Cryptodome\\__init__.py',
    'PYMODULE'),

@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['E:\\Projects\\Programming\\Wormhole\\wormhole.py'],
+    ['C:\\Users\\jackp\\Github Repositories\\Wormhole\\wormhole.py'],
     pathex=[],
     binaries=[],
     datas=[],
@@ -35,5 +35,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['E:\\Projects\\Programming\\Wormhole\\Icons\\Wormhole_Icon.ico'],
+    icon=['C:\\Users\\jackp\\Github Repositories\\Wormhole\\Icons\\Wormhole_Icon.ico'],
 )
