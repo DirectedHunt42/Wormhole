@@ -78,7 +78,7 @@ FONT_FILES = [
     "PathwayExtreme_36pt-Thin.ttf"
 ]
 
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 GITHUB_URL = "https://github.com/DirectedHunt42/Wormhole"
 
 # Set up customtkinter
