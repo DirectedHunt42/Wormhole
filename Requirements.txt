@@ -10,5 +10,6 @@ reportlab
 striprtf
 ezodf
 moviepy
-pydub
+pozalabs-pydub
 requests
+trimesh

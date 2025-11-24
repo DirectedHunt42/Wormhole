@@ -1,5 +1,6 @@
 import os
 import sys
+import shutil  # Added for ffmpeg/pandoc checks
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 from PIL import Image
@@ -29,17 +30,22 @@ except ImportError:
     RTF_SUPPORT = False
 import ezodf
 try:
-    from pydub import AudioSegment
-    PYDUB_SUPPORT = True
-except ImportError:
-    PYDUB_SUPPORT = False
-try:
     from moviepy.editor import VideoFileClip
     MOVIEPY_SUPPORT = True
 except ImportError:
     MOVIEPY_SUPPORT = False
 import requests
 import json
+try:
+    import trimesh
+    TRIMESH_SUPPORT = True
+except ImportError:
+    TRIMESH_SUPPORT = False
+
+# Debug prints to diagnose environment
+print("Python executable:", sys.executable)
+print("Python version:", sys.version)
+print("sys.path (search paths for imports):", sys.path)
 
 BG = "#0a0812"
 CARD = "#120f1e"
@@ -137,8 +143,11 @@ class WormholeApp(ctk.CTk):
         btn_spreadsheets = ctk.CTkButton(self, text="Spreadsheets", command=self.open_spreadsheets_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_spreadsheets.pack(pady=5)
 
-        btn_media = ctk.CTkButton(self, text="Media", command=self.open_media_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
-        btn_media.pack(pady=5)
+        btn_3d = ctk.CTkButton(self, text="3D Models", command=self.open_3d_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
+        btn_3d.pack(pady=5)
+
+        # btn_media = ctk.CTkButton(self, text="Media", command=self.open_media_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
+        # btn_media.pack(pady=5)
 
         about_label = ctk.CTkLabel(self, text=f"Wormhole File Converter\nVersion {VERSION}\n© 2025 Nova Foundry", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
         about_label.pack(pady=20)
@@ -194,7 +203,6 @@ class WormholeApp(ctk.CTk):
 # Functions to open subwindows for each category
 
 def open_docs_window(master):
-    import shutil
     has_pandoc = shutil.which("pandoc") is not None
     print (f"Pandoc found: {has_pandoc}")
 
@@ -871,6 +879,89 @@ def open_spreadsheets_window(master):
     btn_convert = ctk.CTkButton(spreadsheets_win, text="Convert", command=do_convert, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
     btn_convert.pack(pady=5)
 
+def open_3d_window(master):
+    if not TRIMESH_SUPPORT:
+        messagebox.showerror("Error", "trimesh library not installed. Please install trimesh to enable 3D file support.")
+        return
+
+    threed_win = ctk.CTkToplevel(master)
+    threed_win.title("3D Model Conversions")
+    threed_win.geometry("300x300")
+    threed_win.configure(fg_color=BG)
+    # Center the window
+    threed_win.update_idletasks()
+    screen_width = threed_win.winfo_screenwidth()
+    screen_height = threed_win.winfo_screenheight()
+    x = (screen_width // 2) - (300 // 2)
+    y = (screen_height // 2) - (300 // 2)
+    threed_win.geometry(f"300x300+{x}+{y}")
+    # Set icon
+    if os.path.exists(APP_ICON_PATH):
+        try:
+            threed_win.after(250, lambda: threed_win.iconbitmap(APP_ICON_PATH))
+        except Exception as e:
+            print(f"Could not set icon for 3D window: {e}")
+    # Make it transient and grab set to stay on top
+    threed_win.transient(master)
+    threed_win.grab_set()
+
+    label = ctk.CTkLabel(threed_win, text="3D Model Converter", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 12))
+    label.pack(pady=10)
+
+    file_path_var = ctk.StringVar(value="")
+
+    def select_file():
+        fp = filedialog.askopenfilename(title="Select 3D File", filetypes=[("3D files", "*.obj;*.stl;*.ply;*.fbx;*.glb")])
+        if fp:
+            file_path_var.set(fp)
+            file_label.configure(text=os.path.basename(fp))
+
+    btn_select = ctk.CTkButton(threed_win, text="Select File", command=select_file, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
+    btn_select.pack(pady=5)
+
+    file_label = ctk.CTkLabel(threed_win, text="No file selected", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
+    file_label.pack(pady=5)
+
+    target_var = ctk.StringVar(value="OBJ")
+    combo = ctk.CTkComboBox(threed_win, values=["OBJ", "STL", "PLY", "FBX", "GLB"], variable=target_var, font=(FONT_FAMILY_REGULAR, 10), width=250)
+    combo.pack(pady=5)
+
+    progress_bar = ctk.CTkProgressBar(threed_win, width=250, mode="indeterminate")
+    # Initially not packed
+
+    def do_convert():
+        fp = file_path_var.get()
+        if not fp:
+            messagebox.showerror("Error", "No file selected")
+            return
+        target = target_var.get().lower()
+        input_ext = os.path.splitext(fp)[1].lower()[1:]
+        if target == input_ext:
+            messagebox.showwarning("Warning", "Input and output formats are the same")
+            return
+        new_file_path = os.path.splitext(fp)[0] + '.' + target
+
+        def conversion_thread():
+            try:
+                mesh = trimesh.load(fp)
+                mesh.export(new_file_path)
+                threed_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
+            except Exception as e:
+                threed_win.after(0, lambda e=e: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
+            finally:
+                threed_win.after(0, progress_bar.stop)
+                threed_win.after(0, progress_bar.pack_forget)
+                threed_win.after(0, lambda: btn_convert.configure(state="normal"))
+
+        progress_bar.pack(pady=5)
+        progress_bar.start()
+        btn_convert.configure(state="disabled")
+        thread = threading.Thread(target=conversion_thread)
+        thread.start()
+
+    btn_convert = ctk.CTkButton(threed_win, text="Convert", command=do_convert, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
+    btn_convert.pack(pady=5)
+
 def open_media_window(master):
     media_win = ctk.CTkToplevel(master)
     media_win.title("Media Conversions")
@@ -902,19 +993,19 @@ def open_media_window(master):
     video_formats = ["mp4", "avi", "mkv", "mov"]
     media_filetypes = [("Media files", "*." + ";*.".join(audio_formats + video_formats))]
 
+    has_ffmpeg = shutil.which("ffmpeg") is not None
+    print(f"ffmpeg found in PATH: {has_ffmpeg}")
+
     def select_file():
         fp = filedialog.askopenfilename(title="Select Media File", filetypes=media_filetypes)
         if fp:
             input_ext = os.path.splitext(fp)[1].lower()[1:]
             if input_ext in audio_formats:
-                if not PYDUB_SUPPORT:
-                    messagebox.showerror("Error", "pydub library not installed for audio conversion.\nPlease install pydub and ffmpeg.")
-                    return
                 combo.configure(values=[fmt.upper() for fmt in audio_formats])
                 target_var.set("MP3")
             elif input_ext in video_formats:
                 if not MOVIEPY_SUPPORT:
-                    messagebox.showerror("Error", "moviepy library not installed for video conversion.\nPlease install moviepy and ffmpeg.")
+                    messagebox.showerror("Error", "moviepy library not installed for video conversion.\nPlease install moviepy.")
                     return
                 combo.configure(values=[fmt.upper() for fmt in video_formats])
                 target_var.set("MP4")
@@ -952,9 +1043,15 @@ def open_media_window(master):
         def conversion_thread():
             try:
                 if input_ext in audio_formats:
+                    if not has_ffmpeg:
+                        raise RuntimeError("ffmpeg not found in PATH. Please install ffmpeg and add it to your PATH.")
+                    from pydub import AudioSegment  # Import here to delay until needed
                     audio = AudioSegment.from_file(fp)
                     audio.export(new_file_path, format=target_ext)
                 elif input_ext in video_formats:
+                    if not has_ffmpeg:
+                        raise RuntimeError("ffmpeg not found in PATH. Please install ffmpeg and add it to your PATH.")
+                    from moviepy.editor import VideoFileClip  # Import here if not already
                     video = VideoFileClip(fp)
                     if target_ext == "mp4":
                         video.write_videofile(new_file_path, codec="libx264")
@@ -968,6 +1065,8 @@ def open_media_window(master):
                         raise ValueError("Unsupported video target format")
                     video.close()
                 media_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
+            except ImportError as e:
+                media_win.after(0, lambda e=e: messagebox.showerror("Error", f"Library not installed: {str(e)}. Please install the required library (pydub or moviepy)."))
             except Exception as e:
                 media_win.after(0, lambda e=e: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
             finally:
@@ -1000,6 +1099,9 @@ class WormholeApp(WormholeApp):
 
     def open_spreadsheets_window(self):
         open_spreadsheets_window(self)
+
+    def open_3d_window(self):
+        open_3d_window(self)
 
     def open_media_window(self):
         open_media_window(self)
