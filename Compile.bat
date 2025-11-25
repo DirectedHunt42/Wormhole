@@ -14,7 +14,7 @@ REM Main Directories
 set "OUTPUT_DIR=%SCRIPT_DIR%"
 set "LOG_DIR=%SCRIPT_DIR%\Log"
 REM Requirements File
-set "REQUIREMENTS_FILE=%SCRIPT_DIR%\Requirements.txt"
+set "REQUIREMENTS_FILE=%SCRIPT_DIR%\requirements.txt"
 REM Script 1: Wormhole
 set "WORMHOLE_SCRIPT=wormhole.py"
 set "WORMHOLE_ICON=%SCRIPT_DIR%\Icons\Wormhole_Icon.ico"
