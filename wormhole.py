@@ -74,7 +74,7 @@ FONT_FILES = [
     "PathwayExtreme_36pt-Thin.ttf"
 ]
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 GITHUB_URL = "https://github.com/DirectedHunt42/Wormhole"
 
 # Set up customtkinter
@@ -93,15 +93,15 @@ class WormholeApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Wormhole File Converter")
-        self.geometry("400x750")
+        self.geometry("400x775")
         self.configure(fg_color=BG)
         # Center the main window
         self.update_idletasks()
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
         x = (screen_width // 2) - (400 // 2)
-        y = (screen_height // 2) - (750 // 2)
-        self.geometry(f"400x750+{x}+{y}")
+        y = (screen_height // 2) - (775 // 2)
+        self.geometry(f"400x775+{x}+{y}")
         self._build_ui()
         self.check_for_updates()
 
