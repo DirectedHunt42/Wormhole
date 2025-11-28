@@ -42,7 +42,9 @@ Built with a clean UI and simple workflow, Wormhole helps you convert documents,
 - 🔄 **Multi-Format Conversion** — Convert between a wide variety of file types.
 - ⚡ **Fast & Lightweight** — Optimized for quick conversions without bloat.
 
-[![Flag Counter](https://s01.flagcounter.com/countxl/ZFn0/bg_0D1117/txt_FFFFFF/border_0D1117/columns_6/maxflags_20/viewers_0/labels_1/pageviews_1/flags_0/percent_1/)](https://s01.flagcounter.com/more/ZFn0/)
+<div>
+  <a href="https://info.flagcounter.com/ZFn0"><img src="https://s01.flagcounter.com/count2/ZFn0/bg_0B0F1A/txt_FFFFFF/border_FFFFFF/columns_4/maxflags_20/viewers_0/labels_0/pageviews_1/flags_0/percent_1/" alt="Flag Counter" border="0"></a>
+</div>
 
 ---
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-NovaFoundry-6f4e37?style=for-the-badge&logo=buymeacoffee&logoColor=white)](https://buymeacoffee.com/novafoundry)
