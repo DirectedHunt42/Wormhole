@@ -1,29 +1,58 @@
-# 🔒 Security Policy
+# Security Policy
 
-Thank you for helping keep this project safe! 🛡️
+## Supported Versions
 
-Because this project is not security-critical, we keep things simple.
+Only the most recent release of this project receives security updates and patches.
 
----
+| Version | Supported          |
+|----------|--------------------|
+| Latest | ✅ Supported       |
+| Older versions   | ❌ Not supported  |
 
-## 🪲 Reporting Security Issues
-
-If you believe you've found a security-related bug, vulnerability, or anything that could impact the project’s safety:
-
-👉 **Please open a new issue in the repository.**
-
-Include as much detail as you can so the maintainers can understand and fix the problem quickly.
+To stay secure, please always update to the latest release as soon as possible.
 
 ---
 
-## 💬 Response Time
+## Reporting a Vulnerability
 
-Since this project isn’t security-sensitive, responses may not be immediate,  
-but we will review and address reports as soon as possible.
+If you discover a security vulnerability in this project, please **do not open a public issue**.
+
+Instead, report it responsibly by contacting:
+
+📧 **security@novafoundry.ca**
+
+Please include the following details in your report:
+
+- A detailed description of the vulnerability  
+- Steps to reproduce the issue  
+- The potential impact or severity  
+- Any suggested mitigations or patches  
 
 ---
 
-## 🙏 Thanks
+## Security Guidelines
 
-Thank you for taking the time to report issues and help improve the project!  
-Your contributions make a difference. 🚀
+Contributors should follow these best practices to maintain project security:
+
+- Never include secrets, API keys, or passwords in commits  
+- Use HTTPS and other secure protocols where applicable  
+- Keep dependencies up to date before submitting pull requests  
+- Follow the [Code of Conduct](./CODE_OF_CONDUCT.md)
+
+---
+
+## Disclosure Policy
+
+Once a vulnerability is confirmed and fixed:
+
+1. The fix will be included in the next release.  
+2. The release notes will acknowledge the issue and credit the reporter (unless anonymity is requested).  
+3. Users will be encouraged to update immediately.  
+
+---
+
+## Security Resources
+
+For best practices and guidance, see:  
+- [GitHub Security Advisories](https://docs.github.com/en/code-security/security-advisories)  
+- [Open Source Security Foundation](https://openssf.org/)
