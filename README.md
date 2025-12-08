@@ -21,7 +21,7 @@
 </div>
 
 <div align="center">
-
+  
 ![Commits](https://img.shields.io/github/commit-activity/m/DirectedHunt42/Wormhole?color=blue)
 ![Issues](https://img.shields.io/github/issues/DirectedHunt42/Wormhole)
 ![License](https://img.shields.io/badge/license-CC%20BY--ND%204.0-purple)
