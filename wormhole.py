@@ -569,13 +569,16 @@ class WormholeApp(ctk.CTk):
                 for ext in info['extensions']:
                     main_key_path = rf"Software\Classes\SystemFileAssociations\{ext}\shell\WormholeConvert"
                     key = winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, main_key_path, 0, winreg.KEY_SET_VALUE)
-                    winreg.SetValueEx(key, None, 0, winreg.REG_SZ, "Convert with Wormhole")
+                    winreg.SetValueEx(key, "MUIVerb", 0, winreg.REG_SZ, "Convert with Wormhole")
                     winreg.SetValueEx(key, "Icon", 0, winreg.REG_SZ, icon_path)
-                    subcommands = []
-                    for tgt in info['targets']:
+                    winreg.SetValueEx(key, "SubCommands", 0, winreg.REG_SZ, "")
+                    # Create the shell subkey under main
+                    shell_key_path = main_key_path + r"\shell"
+                    winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, shell_key_path, 0, winreg.KEY_SET_VALUE)
+                    for i, tgt in enumerate(sorted(info['targets'])):  # Sort for consistent order
                         clean_tgt = tgt.replace(' ', '')
-                        subcommands.append(f"To{clean_tgt}")
-                        sub_key_path = rf"Software\Classes\SystemFileAssociations\{ext}\shell\To{clean_tgt}"
+                        sub_key_name = f"{i:02d}_{clean_tgt}"  # Prefix for ordering
+                        sub_key_path = shell_key_path + rf"\{sub_key_name}"
                         sub_key = winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, sub_key_path, 0, winreg.KEY_SET_VALUE)
                         winreg.SetValueEx(sub_key, None, 0, winreg.REG_SZ, f"To {tgt}")
                         winreg.CloseKey(sub_key)
@@ -583,7 +586,6 @@ class WormholeApp(ctk.CTk):
                         cmd_key = winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, cmd_key_path, 0, winreg.KEY_SET_VALUE)
                         winreg.SetValueEx(cmd_key, None, 0, winreg.REG_SZ, f'{exe_path} "%1" "{tgt}"')
                         winreg.CloseKey(cmd_key)
-                    winreg.SetValueEx(key, "SubCommands", 0, winreg.REG_SZ, "|".join(subcommands))
                     winreg.CloseKey(key)
         except Exception as e:
             print(f"Failed to register context menu: {e}")
@@ -595,10 +597,11 @@ class WormholeApp(ctk.CTk):
                 for ext in info['extensions']:
                     main_key_path = rf"Software\Classes\SystemFileAssociations\{ext}\shell\WormholeConvert"
                     self._delete_registry_key(winreg.HKEY_CURRENT_USER, main_key_path)
+                    # Also clean up old flat structure if exists
                     for tgt in info['targets']:
                         clean_tgt = tgt.replace(' ', '')
-                        sub_key_path = rf"Software\Classes\SystemFileAssociations\{ext}\shell\To{clean_tgt}"
-                        self._delete_registry_key(winreg.HKEY_CURRENT_USER, sub_key_path)
+                        old_sub_key_path = rf"Software\Classes\SystemFileAssociations\{ext}\shell\To{clean_tgt}"
+                        self._delete_registry_key(winreg.HKEY_CURRENT_USER, old_sub_key_path)
         except Exception as e:
             print(f"Failed to unregister context menu: {e}")
 
