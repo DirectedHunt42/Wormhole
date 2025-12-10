@@ -50,17 +50,25 @@ ACCENT = "#7aa3ff"
 ACCENT_DIM = "#4d6bbc"
 TEXT = "#e8e6f5"
 
-WORMHOLE_IMAGE_PATH = os.path.join("Icons", "wormhole_Transparent_Light.png")
+def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller onefile."""
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except AttributeError:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+WORMHOLE_IMAGE_PATH = resource_path(os.path.join("Icons", "wormhole_Transparent_Light.png"))
 try:
     WORMHOLE_PIL_IMAGE = Image.open(WORMHOLE_IMAGE_PATH)
 except Exception as e:
     print(f"Could not load wormhole image: {e}")
     WORMHOLE_PIL_IMAGE = Image.new("RGBA", (100, 100), (100, 100, 100, 255))
 
-APP_ICON_PATH = os.path.join("Icons", "Wormhole_Icon.ico")
+APP_ICON_PATH = resource_path(os.path.join("Icons", "Wormhole_Icon.ico"))
 
-# Paths for custom fonts (adjust family and file names if needed; assumes Roboto as example)
-FONTS_DIR = "fonts"
+FONTS_DIR = resource_path("fonts")
 FONT_FAMILY_REGULAR = "Pathway Extreme 36pt Regular"
 FONT_FAMILY_SEMIBOLD = "Pathway Extreme 36pt SemiBold"
 FONT_FAMILY_ITALIC = "Pathway Extreme 36pt Italic"
@@ -74,7 +82,7 @@ FONT_FILES = [
     "PathwayExtreme_36pt-Thin.ttf"
 ]
 
-VERSION = "1.1.1"
+VERSION = "1.2.0"
 GITHUB_URL = "https://github.com/DirectedHunt42/Wormhole"
 
 # Set up customtkinter
@@ -88,6 +96,439 @@ for font_file in FONT_FILES:
         ctk.FontManager.load_font(font_path)
     else:
         print(f"Custom font file not found: {font_path}; falling back to default for this variant.")
+
+has_pandoc = shutil.which("pandoc") is not None
+has_ffmpeg = shutil.which("ffmpeg") is not None
+
+formats = {
+    'docs': {
+        'extensions': [".txt", ".pdf", ".docx", ".html", ".md", ".odt"],
+        'targets': ["TXT", "DOCX", "HTML", "MD", "ODT"],
+    },
+    'presentations': {
+        'extensions': [".pptx", ".odp"],
+        'targets': ["PPTX", "PDF", "TXT", "DOCX", "ODP"],
+    },
+    'images': {
+        'extensions': [".jpg", ".jpeg", ".png", ".webp", ".avif", ".ico", ".bmp", ".gif", ".tiff"],
+        'targets': ["PNG", "JPG", "WEBP", "AVIF", "ICO", "BMP", "GIF", "TIFF"],
+    },
+    'archive': {
+        'extensions': [".zip", ".7z", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2"],
+        'targets': ["ZIP", "7Z", "TAR", "TGZ", "TBZ2"],
+    },
+    'spreadsheets': {
+        'extensions': [".xlsx", ".csv", ".ods"],
+        'targets': ["XLSX", "CSV", "ODS"],
+    },
+    '3d': {
+        'extensions': [".obj", ".stl", ".ply", ".fbx", ".glb"],
+        'targets': ["OBJ", "STL", "PLY", "FBX", "GLB"],
+    },
+    'media_audio': {
+        'extensions': [".mp3", ".wav", ".ogg", ".flac", ".aac", ".m4a"],
+        'targets': ["MP3", "WAV", "OGG", "FLAC", "AAC", "M4A"],
+    },
+    'media_video': {
+        'extensions': [".mp4", ".avi", ".mkv", ".mov"],
+        'targets': ["MP4", "AVI", "MKV", "MOV"] + [f"{a.upper()} (extract audio)" for a in ["mp3", "wav", "ogg", "flac", "aac", "m4a"]],
+    },
+}
+
+if has_pandoc or RTF_SUPPORT:
+    formats['docs']['extensions'].append('.rtf')
+if has_pandoc:
+    formats['docs']['targets'].append('RTF')
+if not TRIMESH_SUPPORT:
+    if '3d' in formats:
+        del formats['3d']
+if not has_ffmpeg:
+    if 'media_audio' in formats:
+        del formats['media_audio']
+    if 'media_video' in formats:
+        del formats['media_video']
+
+def get_category(file_path):
+    lfp = file_path.lower()
+    audio_exts = ('.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a')
+    video_exts = ('.mp4', '.avi', '.mkv', '.mov')
+    if lfp.endswith(('.txt', '.pdf', '.docx', '.html', '.md', '.odt')) or (lfp.endswith('.rtf') and (has_pandoc or RTF_SUPPORT)):
+        return 'docs'
+    elif lfp.endswith(('.pptx', '.odp')):
+        return 'presentations'
+    elif lfp.endswith(('.jpg', '.jpeg', '.png', '.webp', '.avif', '.ico', '.bmp', '.gif', '.tiff')):
+        return 'images'
+    elif lfp.endswith(('.zip', '.7z', '.tar', '.tar.gz', '.tgz', '.tar.bz2', '.tbz2')):
+        return 'archive'
+    elif lfp.endswith(('.xlsx', '.csv', '.ods')):
+        return 'spreadsheets'
+    elif lfp.endswith(('.obj', '.stl', '.ply', '.fbx', '.glb')):
+        return '3d'
+    elif lfp.endswith(audio_exts):
+        return 'media_audio'
+    elif lfp.endswith(video_exts):
+        return 'media_video'
+    else:
+        return None
+
+def convert_docs(file_path, target):
+    input_ext = os.path.splitext(file_path)[1].lower()[1:]
+    new_file_path = os.path.splitext(file_path)[0] + '.' + target.lower()
+    use_pandoc = has_pandoc and input_ext != "pdf" and target != "TXT" and target != "MD"
+    text = ""
+    if not use_pandoc:
+        if input_ext in ["txt", "md"]:
+            with open(file_path, 'r') as f:
+                text = f.read()
+        elif input_ext == "pdf":
+            reader = PdfReader(file_path)
+            text = ''
+            for page in reader.pages:
+                text += page.extract_text() + '\n'
+        elif input_ext == "docx":
+            doc = Document(file_path)
+            text = '\n'.join([para.text for para in doc.paragraphs])
+        elif input_ext == "html":
+            with open(file_path, 'r') as f:
+                soup = BeautifulSoup(f.read(), 'html.parser')
+                text = soup.get_text()
+        elif input_ext == "odt":
+            doc = ezodf.opendoc(file_path)
+            text = '\n'.join(obj.text or '' for obj in doc.body if obj.kind == 'Paragraph')
+        elif input_ext == "rtf":
+            if RTF_SUPPORT:
+                with open(file_path, 'r') as f:
+                    rtf = f.read()
+                text = rtf_to_text(rtf)
+            else:
+                raise ValueError("RTF input not supported without striprtf or Pandoc")
+        else:
+            raise ValueError("Unsupported input format")
+
+        if target in ["TXT", "MD"]:
+            with open(new_file_path, 'w') as f:
+                f.write(text)
+        elif target == "DOCX":
+            doc = Document()
+            for para_text in text.split('\n'):
+                doc.add_paragraph(para_text)
+            doc.save(new_file_path)
+        elif target == "HTML":
+            with open(new_file_path, 'w') as f:
+                escaped_text = text.replace('<', '&lt;').replace('>', '&gt;')
+                f.write(f"<html><body><pre>{escaped_text}</pre></body></html>")
+        elif target == "ODT":
+            doc = ezodf.newdoc(doctype='odt', filename=new_file_path)
+            for para_text in text.split('\n'):
+                doc.body.append(ezodf.Paragraph(para_text))
+            doc.save()
+        elif target == "RTF":
+            raise ValueError("RTF output not supported without Pandoc")
+        else:
+            raise ValueError("Unsupported target format")
+    else:
+        subprocess.run(["pandoc", file_path, "-o", new_file_path], check=True)
+    return new_file_path
+
+def convert_presentations(file_path, target):
+    input_ext = os.path.splitext(file_path)[1].lower()[1:]
+    new_file_path = os.path.splitext(file_path)[0] + '.' + target.lower()
+    text = ""
+    if input_ext == "pptx":
+        pres = Presentation(file_path)
+        text = ''
+        for slide in pres.slides:
+            for shape in slide.shapes:
+                if shape.has_text_frame:
+                    for paragraph in shape.text_frame.paragraphs:
+                        for run in paragraph.runs:
+                            text += run.text
+                        text += '\n'
+    elif input_ext == "odp":
+        doc = ezodf.opendoc(file_path)
+        text = '\n'.join(obj.text or '' for obj in doc.body if obj.kind == 'Paragraph')
+    else:
+        raise ValueError("Unsupported input format")
+
+    if target == "TXT":
+        with open(new_file_path, 'w') as f:
+            f.write(text)
+    elif target == "PDF":
+        c = canvas.Canvas(new_file_path, pagesize=letter)
+        width, height = letter
+        y = height - 50  # Start from top with margin
+        for line in text.splitlines():
+            c.drawString(50, y, line.strip())
+            y -= 15  # Line spacing
+            if y < 50:  # Simple page break handling
+                c.showPage()
+                y = height - 50
+        c.save()
+    elif target == "DOCX":
+        doc = Document()
+        doc.add_paragraph(text)
+        doc.save(new_file_path)
+    elif target == "PPTX":
+        pres = Presentation()
+        slide_layout = pres.slide_layouts[0]
+        slide = pres.slides.add_slide(slide_layout)
+        left = top = Inches(1)
+        width = height = Inches(6)
+        txBox = slide.shapes.add_textbox(left, top, width, height)
+        tf = txBox.text_frame
+        tf.text = text
+        pres.save(new_file_path)
+    elif target == "ODP":
+        doc = ezodf.newdoc(doctype='odp', filename=new_file_path)
+        doc.body.append(ezodf.Paragraph(text))
+        doc.save()
+    else:
+        raise ValueError("Unsupported target format")
+    return new_file_path
+
+def convert_images(file_path, target):
+    input_ext = os.path.splitext(file_path)[1].lower()[1:]
+    if input_ext == "jpeg":
+        input_ext = "jpg"
+    new_file_path = os.path.splitext(file_path)[0] + '.' + target.lower()
+    img = Image.open(file_path)
+    if target == "JPG":
+        if img.mode in ('RGBA', 'LA', 'P'):
+            img = img.convert('RGB')
+        img.save(new_file_path, 'JPEG')
+    elif target == "PNG":
+        img.save(new_file_path, 'PNG')
+    elif target == "WEBP":
+        img.save(new_file_path, 'WEBP')
+    elif target == "AVIF":
+        img.save(new_file_path, 'AVIF')
+    elif target == "ICO":
+        sizes = [16, 24, 32, 40, 48, 64, 128, 256]
+        selected_tuples = [(s, s) for s in sizes]
+        img.save(new_file_path, format='ICO', sizes=selected_tuples, bitmap_format="bmp")
+    elif target == "BMP":
+        img.save(new_file_path, 'BMP')
+    elif target == "GIF":
+        img.save(new_file_path, 'GIF')
+    elif target == "TIFF":
+        img.save(new_file_path, 'TIFF')
+    else:
+        raise ValueError("Unsupported target format")
+    return new_file_path
+
+def get_archive_type(fp):
+    lfp = fp.lower()
+    if lfp.endswith('.zip'):
+        return 'zip'
+    if lfp.endswith('.7z'):
+        return '7z'
+    if lfp.endswith('.tar'):
+        return 'tar'
+    if lfp.endswith('.tar.gz') or lfp.endswith('.tgz'):
+        return 'tgz'
+    if lfp.endswith('.tar.bz2') or lfp.endswith('.tbz2'):
+        return 'tbz2'
+    raise ValueError("Unsupported archive type")
+
+def convert_archive(file_path, target):
+    input_type = get_archive_type(file_path)
+    ext_map = {
+        'ZIP': '.zip',
+        '7Z': '.7z',
+        'TAR': '.tar',
+        'TGZ': '.tar.gz',
+        'TBZ2': '.tar.bz2'
+    }
+    new_file_path = os.path.splitext(file_path)[0] + ext_map[target]
+    temp_dir = tempfile.mkdtemp()
+    try:
+        # Extract
+        if input_type == 'zip':
+            with zipfile.ZipFile(file_path, 'r') as z:
+                z.extractall(temp_dir)
+        elif input_type == '7z':
+            with py7zr.SevenZipFile(file_path, 'r') as z:
+                z.extractall(temp_dir)
+        elif input_type == 'tar':
+            with tarfile.open(file_path, 'r') as t:
+                t.extractall(temp_dir)
+        elif input_type == 'tgz':
+            with tarfile.open(file_path, 'r:gz') as t:
+                t.extractall(temp_dir)
+        elif input_type == 'tbz2':
+            with tarfile.open(file_path, 'r:bz2') as t:
+                t.extractall(temp_dir)
+        
+        # Create new archive
+        if target == 'ZIP':
+            with zipfile.ZipFile(new_file_path, 'w', zipfile.ZIP_DEFLATED) as z:
+                for root, dirs, files in os.walk(temp_dir):
+                    for file in files:
+                        z.write(os.path.join(root, file), os.path.relpath(os.path.join(root, file), temp_dir))
+        elif target == '7Z':
+            with py7zr.SevenZipFile(new_file_path, 'w') as z:
+                for root, dirs, files in os.walk(temp_dir):
+                    for file in files:
+                        z.write(os.path.join(root, file), os.path.relpath(os.path.join(root, file), temp_dir))
+        elif target == 'TAR':
+            with tarfile.open(new_file_path, 'w') as t:
+                for root, dirs, files in os.walk(temp_dir):
+                    for file in files:
+                        t.add(os.path.join(root, file), os.path.relpath(os.path.join(root, file), temp_dir))
+        elif target == 'TGZ':
+            with tarfile.open(new_file_path, 'w:gz') as t:
+                for root, dirs, files in os.walk(temp_dir):
+                    for file in files:
+                        t.add(os.path.join(root, file), os.path.relpath(os.path.join(root, file), temp_dir))
+        elif target == 'TBZ2':
+            with tarfile.open(new_file_path, 'w:bz2') as t:
+                for root, dirs, files in os.walk(temp_dir):
+                    for file in files:
+                        t.add(os.path.join(root, file), os.path.relpath(os.path.join(root, file), temp_dir))
+    finally:
+        shutil.rmtree(temp_dir)
+    return new_file_path
+
+def convert_spreadsheets(file_path, target):
+    input_ext = os.path.splitext(file_path)[1].lower()[1:]
+    new_file_path = os.path.splitext(file_path)[0] + '.' + target.lower()
+    data = []
+    if input_ext == "xlsx":
+        wb = openpyxl.load_workbook(file_path)
+        sheet = wb.active
+        data = [[cell.value or '' for cell in row] for row in sheet.rows]
+    elif input_ext == "csv":
+        with open(file_path, 'r', newline='') as f:
+            reader = csv.reader(f)
+            data = list(reader)
+    elif input_ext == "ods":
+        doc = ezodf.opendoc(file_path)
+        sheet = doc.sheets[0]
+        data = [[cell.value or '' for cell in row] for row in sheet.rows()]
+    else:
+        raise ValueError("Unsupported input format")
+
+    if target == "XLSX":
+        wb = openpyxl.Workbook()
+        sheet = wb.active
+        for row in data:
+            sheet.append(row)
+        wb.save(new_file_path)
+    elif target == "CSV":
+        with open(new_file_path, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerows(data)
+    elif target == "ODS":
+        doc = ezodf.newdoc(doctype='ods', filename=new_file_path)
+        max_cols = max(len(row) for row in data) if data else 1
+        sht = ezodf.Sheet('Sheet1', size=(len(data), max_cols))
+        doc.sheets.append(sht)
+        for r, row in enumerate(data):
+            for c, val in enumerate(row):
+                sht[r, c].set_value(val)
+        doc.save()
+    else:
+        raise ValueError("Unsupported target format")
+    return new_file_path
+
+def convert_3d(file_path, target):
+    if not TRIMESH_SUPPORT:
+        raise ImportError("trimesh library not installed.")
+    new_file_path = os.path.splitext(file_path)[0] + '.' + target.lower()
+    mesh = trimesh.load(file_path)
+    mesh.export(new_file_path)
+    return new_file_path
+
+def run_ffmpeg(cmd, progress_cb=None, duration=None):
+    process = subprocess.Popen(cmd, stderr=subprocess.PIPE, universal_newlines=True)
+    while True:
+        line = process.stderr.readline().strip()
+        if not line and process.poll() is not None:
+            break
+        if line and progress_cb and duration:
+            time_match = re.search(r'time=(\d{2}):(\d{2}):(\d{2}\.\d{2})', line)
+            if time_match:
+                h, m, s = map(float, time_match.groups())
+                time = h * 3600 + m * 60 + s
+                progress_cb(time / duration)
+    process.wait()
+    if process.returncode != 0:
+        raise RuntimeError(f"ffmpeg failed with code {process.returncode}")
+
+def convert_media(file_path, target):
+    if not has_ffmpeg:
+        raise RuntimeError("ffmpeg not found in PATH.")
+    is_extract = "(extract audio)" in target
+    target_ext = target.split(" ")[0].lower()
+    new_file_path = os.path.splitext(file_path)[0] + '.' + target_ext
+    # Get duration using ffprobe
+    duration = None
+    try:
+        ffprobe_cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', file_path]
+        duration_str = subprocess.check_output(ffprobe_cmd).decode().strip()
+        duration = float(duration_str)
+    except Exception as e:
+        print(f"Could not get duration: {e}")
+    if is_extract:
+        audio_cmd = ['ffmpeg', '-y', '-i', file_path, '-vn', new_file_path]
+        muted_path = os.path.splitext(file_path)[0] + '_no_audio' + os.path.splitext(file_path)[1]
+        video_cmd = ['ffmpeg', '-y', '-i', file_path, '-an', muted_path]
+        if duration:
+            def audio_prog(time):
+                pass  # no progress in silent
+            run_ffmpeg(audio_cmd, audio_prog, duration)
+            def video_prog(time):
+                pass
+            run_ffmpeg(video_cmd, video_prog, duration)
+        else:
+            subprocess.check_call(audio_cmd)
+            subprocess.check_call(video_cmd)
+        return f"{new_file_path}, {muted_path}"
+    else:
+        cmd = ['ffmpeg', '-y', '-i', file_path, new_file_path]
+        if duration:
+            def conv_prog(time):
+                pass
+            run_ffmpeg(cmd, conv_prog, duration)
+        else:
+            subprocess.check_call(cmd)
+        return new_file_path
+
+def silent_convert(file_path, target):
+    if not os.path.isfile(file_path):
+        print("File not found")
+        sys.exit(1)
+    input_ext = os.path.splitext(file_path)[1].lower()[1:]
+    if input_ext == 'jpeg':
+        input_ext = 'jpg'
+    cat = get_category(file_path)
+    if not cat:
+        print("Unsupported file type")
+        sys.exit(1)
+    if target.lower() == input_ext or (target.lower().startswith(input_ext) and "(extract audio)" in target):
+        print("Input and output formats are the same")
+        sys.exit(0)
+    try:
+        if cat == 'docs':
+            new_fp = convert_docs(file_path, target)
+        elif cat == 'presentations':
+            new_fp = convert_presentations(file_path, target)
+        elif cat == 'images':
+            new_fp = convert_images(file_path, target)
+        elif cat == 'archive':
+            new_fp = convert_archive(file_path, target)
+        elif cat == 'spreadsheets':
+            new_fp = convert_spreadsheets(file_path, target)
+        elif cat == '3d':
+            new_fp = convert_3d(file_path, target)
+        elif cat in ['media_audio', 'media_video']:
+            new_fp = convert_media(file_path, target)
+        # On success, stay silent (no print)
+    except Exception as e:
+        # Optionally show error popup (uncomment if wanted; otherwise silent fail)
+        # messagebox.showerror("Conversion Failed", str(e))
+        print(f"Conversion failed: {str(e)}")  # Fallback, but silent in --windowed mode
+        sys.exit(1)
 
 class WormholeApp(ctk.CTk):
     def __init__(self):
@@ -104,6 +545,63 @@ class WormholeApp(ctk.CTk):
         self.geometry(f"400x775+{x}+{y}")
         self._build_ui()
         self.check_for_updates()
+        if sys.platform.startswith('win'):
+            pass  # Registration moved to --register
+        if len(sys.argv) > 1:
+            file = sys.argv[1]
+            if os.path.isfile(file):
+                cat = get_category(file)
+                if cat:
+                    open_func = getattr(self, f'open_{cat}_window')
+                    open_func(preselected_file=file)
+
+    def register_context_menu(self):
+        try:
+            import winreg
+            exe_path = sys.executable
+            icon_path = exe_path  # Use exe path for icon (embedded via PyInstaller --icon)
+            for cat, info in formats.items():
+                for ext in info['extensions']:
+                    key_path = rf"Software\Classes\SystemFileAssociations\{ext}\shell\WormholeConvert"
+                    key = winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE)
+                    winreg.SetValueEx(key, None, 0, winreg.REG_SZ, "Convert with Wormhole")
+                    winreg.SetValueEx(key, "Icon", 0, winreg.REG_SZ, icon_path)
+                    winreg.CloseKey(key)
+                    shell_key_path = key_path + r"\shell"
+                    for tgt in info['targets']:
+                        sub_key_path = shell_key_path + rf"\To{tgt.replace(' ', '')}"  # Clean tgt for key (remove spaces from extract audio)
+                        sub_key = winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, sub_key_path, 0, winreg.KEY_SET_VALUE)
+                        winreg.SetValueEx(sub_key, None, 0, winreg.REG_SZ, f"To {tgt}")
+                        winreg.CloseKey(sub_key)
+                        cmd_key_path = sub_key_path + r"\command"
+                        cmd_key = winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, cmd_key_path, 0, winreg.KEY_SET_VALUE)
+                        winreg.SetValueEx(cmd_key, None, 0, winreg.REG_SZ, f'"{exe_path}" "%1" "{tgt}"')
+                        winreg.CloseKey(cmd_key)
+        except Exception as e:
+            print(f"Failed to register context menu: {e}")
+
+    def unregister_context_menu(self):
+        try:
+            import winreg
+            for cat, info in formats.items():
+                for ext in info['extensions']:
+                    key_path = rf"Software\Classes\SystemFileAssociations\{ext}\shell\WormholeConvert"
+                    self._delete_registry_key(winreg.HKEY_CURRENT_USER, key_path)
+        except Exception as e:
+            print(f"Failed to unregister context menu: {e}")
+
+    def _delete_registry_key(self, root, key_path):
+        import winreg
+        try:
+            key = winreg.OpenKey(root, key_path, 0, winreg.KEY_ALL_ACCESS)
+            num_subkeys, _, _ = winreg.QueryInfoKey(key)
+            for i in range(num_subkeys):
+                subkey_name = winreg.EnumKey(key, 0)
+                self._delete_registry_key(root, key_path + "\\" + subkey_name)
+            winreg.CloseKey(key)
+            winreg.DeleteKey(root, key_path)
+        except FileNotFoundError:
+            pass  # Key already gone
 
     def _build_ui(self):
         if os.path.exists(APP_ICON_PATH):
@@ -198,10 +696,7 @@ class WormholeApp(ctk.CTk):
 
 # Functions to open subwindows for each category
 
-def open_docs_window(master):
-    has_pandoc = shutil.which("pandoc") is not None
-    print (f"Pandoc found: {has_pandoc}")
-
+def open_docs_window(master, preselected_file=None):
     docs_win = ctk.CTkToplevel(master)
     docs_win.title("Docs Conversions")
     docs_win.geometry("300x300")
@@ -255,6 +750,10 @@ def open_docs_window(master):
     progress_bar = ctk.CTkProgressBar(docs_win, width=250, mode="indeterminate")
     # Initially not packed
 
+    if preselected_file:
+        file_path_var.set(preselected_file)
+        file_label.configure(text=os.path.basename(preselected_file))
+
     def do_convert():
         fp = file_path_var.get()
         if not fp:
@@ -265,76 +764,10 @@ def open_docs_window(master):
         if target.lower() == input_ext:
             messagebox.showwarning("Warning", "Input and output formats are the same")
             return
-        new_file_path = os.path.splitext(fp)[0] + '.' + target.lower()
 
         def conversion_thread():
             try:
-                use_pandoc = has_pandoc and input_ext != "pdf" and target != "TXT" and target != "MD"
-                text = ""
-                if not use_pandoc:
-                    if input_ext in ["txt", "md"]:
-                        with open(fp, 'r') as f:
-                            text = f.read()
-                    elif input_ext == "pdf":
-                        reader = PdfReader(fp)
-                        text = ''
-                        for page in reader.pages:
-                            text += page.extract_text() + '\n'
-                    elif input_ext == "docx":
-                        doc = Document(fp)
-                        text = '\n'.join([para.text for para in doc.paragraphs])
-                    elif input_ext == "html":
-                        with open(fp, 'r') as f:
-                            soup = BeautifulSoup(f.read(), 'html.parser')
-                            text = soup.get_text()
-                    elif input_ext == "odt":
-                        doc = ezodf.opendoc(fp)
-                        text = '\n'.join(obj.text or '' for obj in doc.body if obj.kind == 'Paragraph')
-                    elif input_ext == "rtf":
-                        if RTF_SUPPORT:
-                            with open(fp, 'r') as f:
-                                rtf = f.read()
-                            text = rtf_to_text(rtf)
-                        else:
-                            raise ValueError("RTF input not supported without striprtf or Pandoc")
-                    else:
-                        raise ValueError("Unsupported input format")
-
-                    if target in ["TXT", "MD"]:
-                        with open(new_file_path, 'w') as f:
-                            f.write(text)
-                    # elif target == "PDF":
-                    #     doc = SimpleDocTemplate(new_file_path, pagesize=letter,
-                    #                             rightMargin=72, leftMargin=72,
-                    #                             topMargin=72, bottomMargin=72)
-                    #     story = []
-                    #     styles = getSampleStyleSheet()
-                    #     paragraphs = text.split('\n')
-                    #     for p_text in paragraphs:
-                    #         if p_text.strip():
-                    #             p = Paragraph(p_text, styles["Normal"])
-                    #             story.append(p)
-                    #     doc.build(story)
-                    elif target == "DOCX":
-                        doc = Document()
-                        for para_text in text.split('\n'):
-                            doc.add_paragraph(para_text)
-                        doc.save(new_file_path)
-                    elif target == "HTML":
-                        with open(new_file_path, 'w') as f:
-                            escaped_text = text.replace('<', '&lt;').replace('>', '&gt;')
-                            f.write(f"<html><body><pre>{escaped_text}</pre></body></html>")
-                    elif target == "ODT":
-                        doc = ezodf.newdoc(doctype='odt', filename=new_file_path)
-                        for para_text in text.split('\n'):
-                            doc.body.append(ezodf.Paragraph(para_text))
-                        doc.save()
-                    elif target == "RTF":
-                        raise ValueError("RTF output not supported without Pandoc")
-                    else:
-                        raise ValueError("Unsupported target format")
-                else:
-                    subprocess.run(["pandoc", fp, "-o", new_file_path], check=True)
+                new_file_path = convert_docs(fp, target)
                 docs_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
             except FileNotFoundError:
                 docs_win.after(0, lambda: messagebox.showerror("Error", "Pandoc not found. Please install Pandoc for full formatting support."))
@@ -354,7 +787,7 @@ def open_docs_window(master):
     btn_convert = ctk.CTkButton(docs_win, text="Convert", command=do_convert, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
     btn_convert.pack(pady=5)
 
-def open_presentations_window(master):
+def open_presentations_window(master, preselected_file=None):
     pres_win = ctk.CTkToplevel(master)
     pres_win.title("Presentations Conversions")
     pres_win.geometry("300x300")
@@ -400,6 +833,10 @@ def open_presentations_window(master):
     progress_bar = ctk.CTkProgressBar(pres_win, width=250, mode="indeterminate")
     # Initially not packed
 
+    if preselected_file:
+        file_path_var.set(preselected_file)
+        file_label.configure(text=os.path.basename(preselected_file))
+
     def do_convert():
         fp = file_path_var.get()
         if not fp:
@@ -410,63 +847,10 @@ def open_presentations_window(master):
         if target.lower() == input_ext:
             messagebox.showwarning("Warning", "Input and output formats are the same")
             return
-        new_file_path = os.path.splitext(fp)[0] + '.' + target.lower()
 
         def conversion_thread():
             try:
-                text = ""
-                if input_ext == "pptx":
-                    pres = Presentation(fp)
-                    text = ''
-                    for slide in pres.slides:
-                        for shape in slide.shapes:
-                            if shape.has_text_frame:
-                                for paragraph in shape.text_frame.paragraphs:
-                                    for run in paragraph.runs:
-                                        text += run.text
-                                    text += '\n'
-                elif input_ext == "odp":
-                    doc = ezodf.opendoc(fp)
-                    text = '\n'.join(obj.text or '' for obj in doc.body if obj.kind == 'Paragraph')
-                else:
-                    pres_win.after(0, lambda: messagebox.showerror("Error", "Unsupported input format"))
-                    return
-
-                if target == "TXT":
-                    with open(new_file_path, 'w') as f:
-                        f.write(text)
-                elif target == "PDF":
-                    c = canvas.Canvas(new_file_path, pagesize=letter)
-                    width, height = letter
-                    y = height - 50  # Start from top with margin
-                    for line in text.splitlines():
-                        c.drawString(50, y, line.strip())
-                        y -= 15  # Line spacing
-                        if y < 50:  # Simple page break handling
-                            c.showPage()
-                            y = height - 50
-                    c.save()
-                elif target == "DOCX":
-                    doc = Document()
-                    doc.add_paragraph(text)
-                    doc.save(new_file_path)
-                elif target == "PPTX":
-                    pres = Presentation()
-                    slide_layout = pres.slide_layouts[0]
-                    slide = pres.slides.add_slide(slide_layout)
-                    left = top = Inches(1)
-                    width = height = Inches(6)
-                    txBox = slide.shapes.add_textbox(left, top, width, height)
-                    tf = txBox.text_frame
-                    tf.text = text
-                    pres.save(new_file_path)
-                elif target == "ODP":
-                    doc = ezodf.newdoc(doctype='odp', filename=new_file_path)
-                    doc.body.append(ezodf.Paragraph(text))
-                    doc.save()
-                else:
-                    pres_win.after(0, lambda: messagebox.showerror("Error", "Unsupported target format"))
-                    return
+                new_file_path = convert_presentations(fp, target)
                 pres_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
             except Exception as e:
                 pres_win.after(0, lambda e=e: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
@@ -484,7 +868,7 @@ def open_presentations_window(master):
     btn_convert = ctk.CTkButton(pres_win, text="Convert", command=do_convert, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
     btn_convert.pack(pady=5)
 
-def open_images_window(master):
+def open_images_window(master, preselected_file=None):
     img_win = ctk.CTkToplevel(master)
     img_win.title("Images Conversions")
     img_win.geometry("300x450")
@@ -550,6 +934,10 @@ def open_images_window(master):
     progress_bar = ctk.CTkProgressBar(img_win, width=250, mode="indeterminate")
     # Initially not packed
 
+    if preselected_file:
+        file_path_var.set(preselected_file)
+        file_label.configure(text=os.path.basename(preselected_file))
+
     def do_convert():
         fp = file_path_var.get()
         if not fp:
@@ -562,36 +950,15 @@ def open_images_window(master):
         if target.lower() == input_ext or (target == "JPG" and input_ext in ["jpg", "jpeg"]):
             messagebox.showwarning("Warning", "Input and output formats are the same")
             return
-        new_file_path = os.path.splitext(fp)[0] + '.' + target.lower()
 
         def conversion_thread():
             try:
-                img = Image.open(fp)
-                if target == "JPG":
-                    if img.mode in ('RGBA', 'LA', 'P'):
-                        img = img.convert('RGB')
-                    img.save(new_file_path, 'JPEG')
-                elif target == "PNG":
-                    img.save(new_file_path, 'PNG')
-                elif target == "WEBP":
-                    img.save(new_file_path, 'WEBP')
-                elif target == "AVIF":
-                    img.save(new_file_path, 'AVIF')
-                elif target == "ICO":
+                if target == "ICO":
                     selected_sizes = [sizes[i] for i, v in enumerate(check_vars) if v.get()]
                     if not selected_sizes:
                         img_win.after(0, lambda: messagebox.showerror("Error", "Select at least one size for ICO"))
                         return
-                    selected_tuples = [(s, s) for s in selected_sizes]
-                    img.save(new_file_path, format='ICO', sizes=selected_tuples, bitmap_format="bmp")
-                elif target == "BMP":
-                    img.save(new_file_path, 'BMP')
-                elif target == "GIF":
-                    img.save(new_file_path, 'GIF')
-                elif target == "TIFF":
-                    img.save(new_file_path, 'TIFF')
-                else:
-                    raise ValueError("Unsupported target format")
+                new_file_path = convert_images(fp, target)
                 img_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
             except Exception as e:
                 img_win.after(0, lambda e=e: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
@@ -612,7 +979,7 @@ def open_images_window(master):
     # Initially hide ico_frame if not ICO
     update_ico_frame()
 
-def open_archive_window(master):
+def open_archive_window(master, preselected_file=None):
     arch_win = ctk.CTkToplevel(master)
     arch_win.title("Archive Conversions")
     arch_win.geometry("300x300")
@@ -658,19 +1025,9 @@ def open_archive_window(master):
     progress_bar = ctk.CTkProgressBar(arch_win, width=250, mode="indeterminate")
     # Initially not packed
 
-    def get_archive_type(fp):
-        lfp = fp.lower()
-        if lfp.endswith('.zip'):
-            return 'zip'
-        if lfp.endswith('.7z'):
-            return '7z'
-        if lfp.endswith('.tar'):
-            return 'tar'
-        if lfp.endswith('.tar.gz') or lfp.endswith('.tgz'):
-            return 'tgz'
-        if lfp.endswith('.tar.bz2') or lfp.endswith('.tbz2'):
-            return 'tbz2'
-        raise ValueError("Unsupported archive type")
+    if preselected_file:
+        file_path_var.set(preselected_file)
+        file_label.configure(text=os.path.basename(preselected_file))
 
     def do_convert():
         fp = file_path_var.get()
@@ -686,66 +1043,14 @@ def open_archive_window(master):
         if target.lower() == input_type:
             messagebox.showwarning("Warning", "Input and output formats are the same")
             return
-        ext_map = {
-            'ZIP': '.zip',
-            '7Z': '.7z',
-            'TAR': '.tar',
-            'TGZ': '.tar.gz',
-            'TBZ2': '.tar.bz2'
-        }
-        new_file_path = os.path.splitext(fp)[0] + ext_map[target]
-        temp_dir = tempfile.mkdtemp()
 
         def conversion_thread():
             try:
-                # Extract
-                if input_type == 'zip':
-                    with zipfile.ZipFile(fp, 'r') as z:
-                        z.extractall(temp_dir)
-                elif input_type == '7z':
-                    with py7zr.SevenZipFile(fp, 'r') as z:
-                        z.extractall(temp_dir)
-                elif input_type == 'tar':
-                    with tarfile.open(fp, 'r') as t:
-                        t.extractall(temp_dir)
-                elif input_type == 'tgz':
-                    with tarfile.open(fp, 'r:gz') as t:
-                        t.extractall(temp_dir)
-                elif input_type == 'tbz2':
-                    with tarfile.open(fp, 'r:bz2') as t:
-                        t.extractall(temp_dir)
-                
-                # Create new archive
-                if target == 'ZIP':
-                    with zipfile.ZipFile(new_file_path, 'w', zipfile.ZIP_DEFLATED) as z:
-                        for root, dirs, files in os.walk(temp_dir):
-                            for file in files:
-                                z.write(os.path.join(root, file), os.path.relpath(os.path.join(root, file), temp_dir))
-                elif target == '7Z':
-                    with py7zr.SevenZipFile(new_file_path, 'w') as z:
-                        for root, dirs, files in os.walk(temp_dir):
-                            for file in files:
-                                z.write(os.path.join(root, file), os.path.relpath(os.path.join(root, file), temp_dir))
-                elif target == 'TAR':
-                    with tarfile.open(new_file_path, 'w') as t:
-                        for root, dirs, files in os.walk(temp_dir):
-                            for file in files:
-                                t.add(os.path.join(root, file), os.path.relpath(os.path.join(root, file), temp_dir))
-                elif target == 'TGZ':
-                    with tarfile.open(new_file_path, 'w:gz') as t:
-                        for root, dirs, files in os.walk(temp_dir):
-                            for file in files:
-                                t.add(os.path.join(root, file), os.path.relpath(os.path.join(root, file), temp_dir))
-                elif target == 'TBZ2':
-                    with tarfile.open(new_file_path, 'w:bz2') as t:
-                        for root, dirs, files in os.walk(temp_dir):
-                            for file in files:
-                                t.add(os.path.join(root, file), os.path.relpath(os.path.join(root, file), temp_dir))
+                new_file_path = convert_archive(fp, target)
                 arch_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
             except Exception as e:
                 arch_win.after(0, lambda e=e: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
             finally:
-                shutil.rmtree(temp_dir)
                 arch_win.after(0, progress_bar.stop)
                 arch_win.after(0, progress_bar.pack_forget)
                 arch_win.after(0, lambda: btn_convert.configure(state="normal"))
@@ -759,7 +1064,7 @@ def open_archive_window(master):
     btn_convert = ctk.CTkButton(arch_win, text="Convert", command=do_convert, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
     btn_convert.pack(pady=5)
 
-def open_spreadsheets_window(master):
+def open_spreadsheets_window(master, preselected_file=None):
     spreadsheets_win = ctk.CTkToplevel(master)
     spreadsheets_win.title("Spreadsheets Conversions")
     spreadsheets_win.geometry("300x300")
@@ -805,6 +1110,10 @@ def open_spreadsheets_window(master):
     progress_bar = ctk.CTkProgressBar(spreadsheets_win, width=250, mode="indeterminate")
     # Initially not packed
 
+    if preselected_file:
+        file_path_var.set(preselected_file)
+        file_label.configure(text=os.path.basename(preselected_file))
+
     def do_convert():
         fp = file_path_var.get()
         if not fp:
@@ -815,49 +1124,10 @@ def open_spreadsheets_window(master):
         if target.lower() == input_ext:
             messagebox.showwarning("Warning", "Input and output formats are the same")
             return
-        new_file_path = os.path.splitext(fp)[0] + '.' + target.lower()
 
         def conversion_thread():
             try:
-                data = []
-                if input_ext == "xlsx":
-                    wb = openpyxl.load_workbook(fp)
-                    sheet = wb.active
-                    data = [[cell.value or '' for cell in row] for row in sheet.rows]
-                elif input_ext == "csv":
-                    with open(fp, 'r', newline='') as f:
-                        reader = csv.reader(f)
-                        data = list(reader)
-                elif input_ext == "ods":
-                    doc = ezodf.opendoc(fp)
-                    sheet = doc.sheets[0]
-                    data = [[cell.value or '' for cell in row] for row in sheet.rows()]
-                else:
-                    spreadsheets_win.after(0, lambda: messagebox.showerror("Error", "Unsupported input format"))
-                    return
-
-                if target == "XLSX":
-                    wb = openpyxl.Workbook()
-                    sheet = wb.active
-                    for row in data:
-                        sheet.append(row)
-                    wb.save(new_file_path)
-                elif target == "CSV":
-                    with open(new_file_path, 'w', newline='') as f:
-                        writer = csv.writer(f)
-                        writer.writerows(data)
-                elif target == "ODS":
-                    doc = ezodf.newdoc(doctype='ods', filename=new_file_path)
-                    max_cols = max(len(row) for row in data) if data else 1
-                    sht = ezodf.Sheet('Sheet1', size=(len(data), max_cols))
-                    doc.sheets.append(sht)
-                    for r, row in enumerate(data):
-                        for c, val in enumerate(row):
-                            sht[r, c].set_value(val)
-                    doc.save()
-                else:
-                    spreadsheets_win.after(0, lambda: messagebox.showerror("Error", "Unsupported target format"))
-                    return
+                new_file_path = convert_spreadsheets(fp, target)
                 spreadsheets_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
             except Exception as e:
                 spreadsheets_win.after(0, lambda e=e: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
@@ -875,7 +1145,7 @@ def open_spreadsheets_window(master):
     btn_convert = ctk.CTkButton(spreadsheets_win, text="Convert", command=do_convert, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
     btn_convert.pack(pady=5)
 
-def open_3d_window(master):
+def open_3d_window(master, preselected_file=None):
     if not TRIMESH_SUPPORT:
         messagebox.showerror("Error", "trimesh library not installed. Please install trimesh to enable 3D file support.")
         return
@@ -925,22 +1195,24 @@ def open_3d_window(master):
     progress_bar = ctk.CTkProgressBar(threed_win, width=250, mode="indeterminate")
     # Initially not packed
 
+    if preselected_file:
+        file_path_var.set(preselected_file)
+        file_label.configure(text=os.path.basename(preselected_file))
+
     def do_convert():
         fp = file_path_var.get()
         if not fp:
             messagebox.showerror("Error", "No file selected")
             return
-        target = target_var.get().lower()
+        target = target_var.get().upper()
         input_ext = os.path.splitext(fp)[1].lower()[1:]
-        if target == input_ext:
+        if target.lower() == input_ext:
             messagebox.showwarning("Warning", "Input and output formats are the same")
             return
-        new_file_path = os.path.splitext(fp)[0] + '.' + target
 
         def conversion_thread():
             try:
-                mesh = trimesh.load(fp)
-                mesh.export(new_file_path)
+                new_file_path = convert_3d(fp, target)
                 threed_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
             except Exception as e:
                 threed_win.after(0, lambda e=e: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
@@ -958,23 +1230,7 @@ def open_3d_window(master):
     btn_convert = ctk.CTkButton(threed_win, text="Convert", command=do_convert, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=250, font=(FONT_FAMILY_SEMIBOLD, 10))
     btn_convert.pack(pady=5)
 
-def run_ffmpeg(cmd, progress_cb, duration):
-    process = subprocess.Popen(cmd, stderr=subprocess.PIPE, universal_newlines=True)
-    while True:
-        line = process.stderr.readline().strip()
-        if not line and process.poll() is not None:
-            break
-        if line:
-            time_match = re.search(r'time=(\d{2}):(\d{2}):(\d{2}\.\d{2})', line)
-            if time_match:
-                h, m, s = map(float, time_match.groups())
-                time = h * 3600 + m * 60 + s
-                progress_cb(time / duration)
-    process.wait()
-    if process.returncode != 0:
-        raise RuntimeError(f"ffmpeg failed with code {process.returncode}")
-
-def open_media_window(master):
+def open_media_window(master, preselected_file=None):
     media_win = ctk.CTkToplevel(master)
     media_win.title("Media Conversions")
     media_win.geometry("300x300")
@@ -1004,9 +1260,6 @@ def open_media_window(master):
     audio_formats = ["mp3", "wav", "ogg", "flac", "aac", "m4a"]
     video_formats = ["mp4", "avi", "mkv", "mov"]
     media_filetypes = [("Media files", "*." + ";*.".join(audio_formats + video_formats))]
-
-    has_ffmpeg = shutil.which("ffmpeg") is not None
-    print(f"ffmpeg found in PATH: {has_ffmpeg}")
 
     def select_file():
         fp = filedialog.askopenfilename(title="Select Media File", filetypes=media_filetypes)
@@ -1039,70 +1292,36 @@ def open_media_window(master):
     progress_bar = ctk.CTkProgressBar(media_win, width=250, mode="indeterminate")
     # Initially not packed
 
+    if preselected_file:
+        input_ext = os.path.splitext(preselected_file)[1].lower()[1:]
+        if input_ext in audio_formats:
+            combo.configure(values=[fmt.upper() for fmt in audio_formats])
+            target_var.set("MP3")
+        elif input_ext in video_formats:
+            video_values = [fmt.upper() for fmt in video_formats]
+            audio_values = [fmt.upper() + " (extract audio)" for fmt in audio_formats]
+            combo.configure(values=video_values + audio_values)
+            target_var.set("MP4")
+        file_path_var.set(preselected_file)
+        file_label.configure(text=os.path.basename(preselected_file))
+
     def do_convert():
         fp = file_path_var.get()
         if not fp:
             messagebox.showerror("Error", "No file selected")
             return
         target = target_var.get()
-        if "(extract audio)" in target:
-            is_extract = True
-            target_ext = target.split(" ")[0].lower()
-        else:
-            is_extract = False
-            target_ext = target.lower()
         input_ext = os.path.splitext(fp)[1].lower()[1:]
+        is_extract = "(extract audio)" in target
+        target_ext = target.split(" ")[0].lower()
         if target_ext == input_ext:
             messagebox.showwarning("Warning", "Input and output formats are the same")
             return
-        new_file_path = os.path.splitext(fp)[0] + '.' + target_ext
 
         def conversion_thread():
             try:
-                if not has_ffmpeg:
-                    raise RuntimeError("ffmpeg not found in PATH. Please install ffmpeg and add it to your PATH.")
-                # Get duration using ffprobe
-                duration = None
-                try:
-                    ffprobe_cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', fp]
-                    duration_str = subprocess.check_output(ffprobe_cmd).decode().strip()
-                    duration = float(duration_str)
-                except Exception as e:
-                    print(f"Could not get duration: {e}")
-                    media_win.after(0, lambda: progress_bar.configure(mode="indeterminate"))
-                    media_win.after(0, lambda: progress_bar.start())
-                else:
-                    media_win.after(0, lambda: progress_bar.configure(mode="determinate"))
-                    media_win.after(0, lambda: progress_bar.set(0))
-
-                def local_progress_cb(value):
-                    media_win.after(0, lambda: progress_bar.set(value))
-
-                if is_extract:
-                    audio_cmd = ['ffmpeg', '-y', '-i', fp, '-vn', new_file_path]
-                    muted_path = os.path.splitext(fp)[0] + '_no_audio' + os.path.splitext(fp)[1]
-                    video_cmd = ['ffmpeg', '-y', '-i', fp, '-an', muted_path]
-                    if duration:
-                        def audio_prog(time):
-                            local_progress_cb(time * 0.5)
-                        run_ffmpeg(audio_cmd, audio_prog, duration)
-                        def video_prog(time):
-                            local_progress_cb(0.5 + time * 0.5)
-                        run_ffmpeg(video_cmd, video_prog, duration)
-                    else:
-                        subprocess.check_call(audio_cmd)
-                        subprocess.check_call(video_cmd)
-                    success_msg = f"Audio extracted to: {new_file_path}\nVideo without audio to: {muted_path}"
-                else:
-                    cmd = ['ffmpeg', '-y', '-i', fp, new_file_path]
-                    if duration:
-                        def conv_prog(time):
-                            local_progress_cb(time)
-                        run_ffmpeg(cmd, conv_prog, duration)
-                    else:
-                        subprocess.check_call(cmd)
-                    success_msg = f"File converted to: {new_file_path}"
-                media_win.after(0, lambda: messagebox.showinfo("Success", success_msg))
+                new_file_path = convert_media(fp, target)
+                media_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
             except Exception as e:
                 media_win.after(0, lambda e=e: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
             finally:
@@ -1111,6 +1330,7 @@ def open_media_window(master):
                 media_win.after(0, lambda: btn_convert.configure(state="normal"))
 
         progress_bar.pack(pady=5)
+        progress_bar.start()
         btn_convert.configure(state="disabled")
         thread = threading.Thread(target=conversion_thread)
         thread.start()
@@ -1120,27 +1340,39 @@ def open_media_window(master):
 
 # Extend the app class with open methods
 class WormholeApp(WormholeApp):
-    def open_docs_window(self):
-        open_docs_window(self)
+    def open_docs_window(self, preselected_file=None):
+        open_docs_window(self, preselected_file)
 
-    def open_presentations_window(self):
-        open_presentations_window(self)
+    def open_presentations_window(self, preselected_file=None):
+        open_presentations_window(self, preselected_file)
 
-    def open_images_window(self):
-        open_images_window(self)
+    def open_images_window(self, preselected_file=None):
+        open_images_window(self, preselected_file)
 
-    def open_archive_window(self):
-        open_archive_window(self)
+    def open_archive_window(self, preselected_file=None):
+        open_archive_window(self, preselected_file)
 
-    def open_spreadsheets_window(self):
-        open_spreadsheets_window(self)
+    def open_spreadsheets_window(self, preselected_file=None):
+        open_spreadsheets_window(self, preselected_file)
 
-    def open_3d_window(self):
-        open_3d_window(self)
+    def open_3d_window(self, preselected_file=None):
+        open_3d_window(self, preselected_file)
 
-    def open_media_window(self):
-        open_media_window(self)
+    def open_media_window(self, preselected_file=None):
+        open_media_window(self, preselected_file)
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "--register":
+            app = WormholeApp()  # Init to access methods
+            app.register_context_menu()
+            sys.exit(0)
+        elif sys.argv[1] == "--unregister":
+            app = WormholeApp()
+            app.unregister_context_menu()
+            sys.exit(0)
+        elif len(sys.argv) == 3:
+            silent_convert(sys.argv[1], sys.argv[2])
+            sys.exit(0)
     app = WormholeApp()
     app.mainloop()

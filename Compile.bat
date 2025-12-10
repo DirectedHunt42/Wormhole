@@ -19,9 +19,9 @@ REM Script 1: Wormhole
 set "WORMHOLE_SCRIPT=wormhole.py"
 set "WORMHOLE_ICON=%SCRIPT_DIR%\Icons\Wormhole_Icon.ico"
 set "WORMHOLE_BUILD_NAME=wormhole"
-REM (Example) --add-data "path\to\file;destination\folder"
-REM set "DATA_1=%SCRIPT_DIR%\assets\config.json;."
-REM set "DATA_2=%SCRIPT_DIR%\assets\images;images"
+REM Add data for bundled resources
+set "DATA_1=%SCRIPT_DIR%\Icons;Icons"
+set "DATA_2=%SCRIPT_DIR%\fonts;fonts"
 REM ===================================================================
 REM ================== SCRIPT EXECUTION (No Need to Edit) =============
 REM ===================================================================
@@ -139,6 +139,8 @@ if /I "%COMPILE_WORMHOLE%" == "YES" (
         --icon "%WORMHOLE_ICON%" ^
         --clean ^
         !HIDDEN_IMPORTS! ^
+        --add-data "%DATA_1%" ^
+        --add-data "%DATA_2%" ^
         --distpath "%OUTPUT_DIR%" ^
         --workpath "%LOG_DIR%\build\%WORMHOLE_BUILD_NAME%" ^
         --specpath "%LOG_DIR%" ^
