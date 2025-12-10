@@ -558,25 +558,33 @@ class WormholeApp(ctk.CTk):
     def register_context_menu(self):
         try:
             import winreg
-            exe_path = sys.executable
-            icon_path = exe_path  # Use exe path for icon (embedded via PyInstaller --icon)
+            if hasattr(sys, '_MEIPASS'):
+                # Bundled mode
+                exe_path = sys.executable
+            else:
+                # Script mode
+                exe_path = f'"{sys.executable}" "{os.path.abspath(__file__)}"'
+            icon_path = sys.executable if hasattr(sys, '_MEIPASS') else APP_ICON_PATH
             for cat, info in formats.items():
                 for ext in info['extensions']:
-                    key_path = rf"Software\Classes\SystemFileAssociations\{ext}\shell\WormholeConvert"
-                    key = winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE)
+                    main_key_path = rf"Software\Classes\SystemFileAssociations\{ext}\shell\WormholeConvert"
+                    key = winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, main_key_path, 0, winreg.KEY_SET_VALUE)
                     winreg.SetValueEx(key, None, 0, winreg.REG_SZ, "Convert with Wormhole")
                     winreg.SetValueEx(key, "Icon", 0, winreg.REG_SZ, icon_path)
-                    winreg.CloseKey(key)
-                    shell_key_path = key_path + r"\shell"
+                    subcommands = []
                     for tgt in info['targets']:
-                        sub_key_path = shell_key_path + rf"\To{tgt.replace(' ', '')}"  # Clean tgt for key (remove spaces from extract audio)
+                        clean_tgt = tgt.replace(' ', '')
+                        subcommands.append(f"To{clean_tgt}")
+                        sub_key_path = rf"Software\Classes\SystemFileAssociations\{ext}\shell\To{clean_tgt}"
                         sub_key = winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, sub_key_path, 0, winreg.KEY_SET_VALUE)
                         winreg.SetValueEx(sub_key, None, 0, winreg.REG_SZ, f"To {tgt}")
                         winreg.CloseKey(sub_key)
                         cmd_key_path = sub_key_path + r"\command"
                         cmd_key = winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, cmd_key_path, 0, winreg.KEY_SET_VALUE)
-                        winreg.SetValueEx(cmd_key, None, 0, winreg.REG_SZ, f'"{exe_path}" "%1" "{tgt}"')
+                        winreg.SetValueEx(cmd_key, None, 0, winreg.REG_SZ, f'{exe_path} "%1" "{tgt}"')
                         winreg.CloseKey(cmd_key)
+                    winreg.SetValueEx(key, "SubCommands", 0, winreg.REG_SZ, "|".join(subcommands))
+                    winreg.CloseKey(key)
         except Exception as e:
             print(f"Failed to register context menu: {e}")
 
@@ -585,8 +593,12 @@ class WormholeApp(ctk.CTk):
             import winreg
             for cat, info in formats.items():
                 for ext in info['extensions']:
-                    key_path = rf"Software\Classes\SystemFileAssociations\{ext}\shell\WormholeConvert"
-                    self._delete_registry_key(winreg.HKEY_CURRENT_USER, key_path)
+                    main_key_path = rf"Software\Classes\SystemFileAssociations\{ext}\shell\WormholeConvert"
+                    self._delete_registry_key(winreg.HKEY_CURRENT_USER, main_key_path)
+                    for tgt in info['targets']:
+                        clean_tgt = tgt.replace(' ', '')
+                        sub_key_path = rf"Software\Classes\SystemFileAssociations\{ext}\shell\To{clean_tgt}"
+                        self._delete_registry_key(winreg.HKEY_CURRENT_USER, sub_key_path)
         except Exception as e:
             print(f"Failed to unregister context menu: {e}")
 
