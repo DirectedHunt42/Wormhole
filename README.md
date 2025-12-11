@@ -41,6 +41,7 @@ Built with a clean UI and simple workflow, Wormhole helps you convert documents,
 
 - 🔄 **Multi-Format Conversion** — Convert between a wide variety of file types.
 - ⚡ **Fast & Lightweight** — Optimized for quick conversions without bloat.
+- 🗒️ **Windows Context Menu Option** — Adds option to convert with wormhole to windows context menu for fast file conversion directly from explorer.
 
 <div>
   <a href="https://info.flagcounter.com/ZFn0"><img src="https://s01.flagcounter.com/count2/ZFn0/bg_0B0F1A/txt_FFFFFF/border_FFFFFF/columns_4/maxflags_20/viewers_0/labels_0/pageviews_1/flags_0/percent_1/" alt="Flag Counter" border="0"></a>
