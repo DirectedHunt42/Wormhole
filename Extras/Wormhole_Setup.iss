@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 ; Non-commercial use only
 #define MyAppName "Wormhole"
-#define MyAppVersion "1.2.1"
+#define MyAppVersion "1.2.2"
 #define MyAppPublisher "Nova Foundry"
 #define MyAppURL "novafoundry.ca/wormhole"
 #define MyAppExeName "wormhole.exe"

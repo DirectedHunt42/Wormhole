@@ -93,12 +93,16 @@ FONT_FILES = [
     "PathwayExtreme_36pt-Thin.ttf"
 ]
 
-VERSION = "1.2.1"
+VERSION = "1.2.2"
 GITHUB_URL = "https://github.com/DirectedHunt42/Wormhole"
 
 # Set up customtkinter
-ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("dark-blue")
+if (darkdetect.theme() == "Light"):
+    ctk.set_appearance_mode("light")
+    ctk.set_default_color_theme("blue")
+else:
+    ctk.set_appearance_mode("dark")
+    ctk.set_default_color_theme("dark-blue")
 
 # Load custom fonts
 for font_file in FONT_FILES:
