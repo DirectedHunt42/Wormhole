@@ -6,7 +6,6 @@
 #define MyAppPublisher "Nova Foundry"
 #define MyAppURL "novafoundry.ca/wormhole"
 #define MyAppExeName "wormhole.exe"
-
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
 ; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
@@ -30,44 +29,38 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
 LicenseFile=C:\Users\jackp\Downloads\Wormhole\LICENSE.txt
-
 ; *** MODIFICATION: Chocolatey requires Admin rights ***
 PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
-
 OutputDir=C:\Users\jackp\Downloads
 OutputBaseFilename=Wormhole_setup
 SetupIconFile=C:\Users\jackp\Downloads\Installer Icon template.ico
 SolidCompression=yes
 WizardStyle=modern dynamic
-
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
-
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
-
+Name: "forcepandoc"; Description: "Force reinstall Pandoc (even if already detected)"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+Name: "forcechoco"; Description: "Force reinstall Chocolatey (even if already detected)"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+Name: "forceffmpeg"; Description: "Force reinstall FFmpeg (even if already detected)"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+Name: "showdetails"; Description: "Show terminal windows for dependency installations"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 [Files]
 Source: "C:\Users\jackp\Downloads\Wormhole\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "C:\Users\jackp\Downloads\Wormhole\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
-
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
-
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--register"; Description: "Register context menu"; Flags: runhidden
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent runascurrentuser
-
 [UninstallRun]
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--unregister"; RunOnceId: "UnregisterContextMenu"; Flags: runhidden
-
 [Code]
 var
   InstalledPandoc: Boolean;
   InstalledFFmpeg: Boolean;
-
 // Function to handle Pandoc installation
 function InstallPandoc(): String;
 var
@@ -76,33 +69,35 @@ var
   LogPath: String;
   DownloadScript: String;
   PandocExePath: String;
+  ShowDetails: Boolean;
 begin
   InstalledPandoc := False;
-  // 1. Check if Pandoc is already installed via PATH
-  if Exec(ExpandConstant('{cmd}'), '/C pandoc --version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
+  ShowDetails := IsTaskSelected('showdetails');
+  // 1. Check if Pandoc is already installed via PATH, unless force
+  if (not IsTaskSelected('forcepandoc')) and Exec(ExpandConstant('{cmd}'), '/C pandoc --version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
   begin
     Result := ''; // Already installed, success
     Exit;
   end;
-  
+ 
   // 2. Download the latest Pandoc MSI using PowerShell
   PandocMsiPath := ExpandConstant('{tmp}\pandoc-latest-windows-x86_64.msi');
   LogPath := ExpandConstant('{tmp}\pandoc_download.log');
-  
+ 
   // PowerShell script to fetch latest release and download MSI
-  DownloadScript := 
-    '$ProgressPreference = ''SilentlyContinue''; ' + 
+  DownloadScript :=
+    '$ProgressPreference = ''SilentlyContinue''; ' +
     'try { ' +
-    '  $latest = (Invoke-WebRequest -Uri https://api.github.com/repos/jgm/pandoc/releases/latest -UseBasicParsing).Content | ConvertFrom-Json; ' +
-    '  $asset = $latest.assets | Where-Object { $_.name -like ''pandoc-*-windows-x86_64.msi'' }; ' +
-    '  if ($asset -eq $null) { throw ''MSI asset not found in latest release.''; } ' +
-    '  $downloadUrl = $asset.browser_download_url; ' +
-    '  Invoke-WebRequest -Uri $downloadUrl -OutFile ''' + PandocMsiPath + '''; ' +
+    ' $latest = (Invoke-WebRequest -Uri https://api.github.com/repos/jgm/pandoc/releases/latest -UseBasicParsing).Content | ConvertFrom-Json; ' +
+    ' $asset = $latest.assets | Where-Object { $_.name -like ''pandoc-*-windows-x86_64.msi'' }; ' +
+    ' if ($asset -eq $null) { throw ''MSI asset not found in latest release.''; } ' +
+    ' $downloadUrl = $asset.browser_download_url; ' +
+    ' Invoke-WebRequest -Uri $downloadUrl -OutFile ''' + PandocMsiPath + '''; ' +
     '} catch { ' +
-    '  $_.Exception.Message | Out-File -FilePath ''' + LogPath + '''; ' +
-    '  exit 1; ' +
+    ' $_.Exception.Message | Out-File -FilePath ''' + LogPath + '''; ' +
+    ' exit 1; ' +
     '}';
-  
+ 
   WizardForm.StatusLabel.Caption := 'Downloading latest Pandoc MSI (this may take a moment)...';
   WizardForm.ProgressGauge.Style := npbstMarquee;
   try
@@ -120,27 +115,38 @@ begin
     WizardForm.ProgressGauge.Style := npbstNormal;
     WizardForm.StatusLabel.Caption := '';
   end;
-  
+ 
   // Check if the MSI file was downloaded
   if not FileExists(PandocMsiPath) then
   begin
     Result := 'Pandoc MSI download failed or file not found.';
     Exit;
   end;
-  
+ 
   // 3. Install the downloaded MSI (silent, hidden, for all users) with logging
   LogPath := ExpandConstant('{tmp}\pandoc_install.log'); // Reuse for install log
-  if not Exec('msiexec.exe', '/i "' + PandocMsiPath + '" ALLUSERS=1 /qn /norestart /L*V "' + LogPath + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  if ShowDetails then
   begin
-    Result := 'Failed to execute msiexec for Pandoc. Code: ' + IntToStr(ResultCode) + '. Check log at ' + LogPath;
-    Exit;
+    if not Exec('msiexec.exe', '/i "' + PandocMsiPath + '" ALLUSERS=1 /qb /norestart /L*V "' + LogPath + '"', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+    begin
+      Result := 'Failed to execute msiexec for Pandoc. Code: ' + IntToStr(ResultCode) + '. Check log at ' + LogPath;
+      Exit;
+    end;
+  end
+  else
+  begin
+    if not Exec('msiexec.exe', '/i "' + PandocMsiPath + '" ALLUSERS=1 /qn /norestart /L*V "' + LogPath + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    begin
+      Result := 'Failed to execute msiexec for Pandoc. Code: ' + IntToStr(ResultCode) + '. Check log at ' + LogPath;
+      Exit;
+    end;
   end;
   if ResultCode <> 0 then
   begin
     Result := 'Pandoc installation failed. Code: ' + IntToStr(ResultCode) + '. Check log at ' + LogPath;
     Exit;
   end;
-  
+ 
   // 4. Verify installation using full path (since PATH may not update yet)
   PandocExePath := ExpandConstant('{commonpf}\Pandoc\pandoc.exe');
   if not FileExists(PandocExePath) then
@@ -156,46 +162,63 @@ begin
       end;
     end;
   end;
-  
+ 
   if not Exec(PandocExePath, '--version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
   begin
     Result := 'Pandoc installed but --version failed even with full path. Code: ' + IntToStr(ResultCode);
     Exit;
   end;
-  
+ 
   InstalledPandoc := True; // Flag for restart
   Result := ''; // Success
 end;
-
 // *** NEW FUNCTION: Helper to install Chocolatey ***
 function InstallChocolatey(): String;
 var
   ResultCode: Integer;
   ChocoInstallScript: String;
+  LogPath: String;
+  ShowDetails: Boolean;
 begin
+  ShowDetails := IsTaskSelected('showdetails');
+  LogPath := ExpandConstant('{tmp}\choco_install.log');
   WizardForm.StatusLabel.Caption := 'Installing Chocolatey package manager...';
-  
-  // Official Chocolatey install command
-  ChocoInstallScript := 'Set-ExecutionPolicy Bypass -Scope Process -Force; ' +
-                        '[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; ' +
-                        'iex ((New-Object System.Net.WebClient).DownloadString(''https://community.chocolatey.org/install.ps1''))';
-
-  // Run PowerShell with SW_SHOW to show the terminal to the user
-  if not Exec('powershell.exe', '-NoProfile -InputFormat None -ExecutionPolicy Bypass -Command "' + ChocoInstallScript + '"', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+ 
+  // Official Chocolatey install command with try-catch and logging
+  ChocoInstallScript :=
+    '$ProgressPreference = ''SilentlyContinue''; ' +
+    'try { ' +
+    'Set-ExecutionPolicy Bypass -Scope Process -Force; ' +
+    '[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; ' +
+    'iex ((New-Object System.Net.WebClient).DownloadString(''https://community.chocolatey.org/install.ps1'')); ' +
+    '} catch { ' +
+    ' $_.Exception.Message | Out-File -FilePath ''' + LogPath + '''; ' +
+    ' exit 1; ' +
+    '}';
+  // Run PowerShell, show window if showdetails
+  if ShowDetails then
   begin
-    Result := 'Failed to launch PowerShell for Chocolatey installation. Code: ' + IntToStr(ResultCode);
-    Exit;
+    if not Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -Command "' + ChocoInstallScript + '"', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+    begin
+      Result := 'Failed to launch PowerShell for Chocolatey installation. Code: ' + IntToStr(ResultCode);
+      Exit;
+    end;
+  end
+  else
+  begin
+    if not Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -Command "' + ChocoInstallScript + '" > "' + LogPath + '" 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    begin
+      Result := 'Failed to launch PowerShell for Chocolatey installation. Code: ' + IntToStr(ResultCode);
+      Exit;
+    end;
   end;
-
   if ResultCode <> 0 then
   begin
-    Result := 'Chocolatey installation failed. Code: ' + IntToStr(ResultCode);
+    Result := 'Chocolatey installation failed. Code: ' + IntToStr(ResultCode) + '. Check log at ' + LogPath + ' for details.';
     Exit;
   end;
-
   Result := '';
 end;
-
 // Function to handle FFmpeg installation
 function InstallFFmpeg(): String;
 var
@@ -203,22 +226,26 @@ var
   FFmpegExePath: String;
   ChocoExePath: String;
   ChocoInstallResult: String;
+  LogPath: String;
+  ShowDetails: Boolean;
 begin
   InstalledFFmpeg := False;
-  
-  // 1. Check if FFmpeg is already installed via PATH
-  if Exec(ExpandConstant('{cmd}'), '/C ffmpeg -version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
+  LogPath := ExpandConstant('{tmp}\ffmpeg_install.log');
+  ShowDetails := IsTaskSelected('showdetails');
+ 
+  // 1. Check if FFmpeg is already installed via PATH, unless force
+  if (not IsTaskSelected('forceffmpeg')) and Exec(ExpandConstant('{cmd}'), '/C ffmpeg -version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
   begin
     Result := ''; // Already installed, success
     Exit;
   end;
-  
+ 
   // 2. Check if Chocolatey is installed
   if not Exec(ExpandConstant('{cmd}'), '/C choco -v', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
   begin
     // *** MODIFICATION: Install Chocolatey if missing ***
     ChocoInstallResult := InstallChocolatey();
-    
+   
     if ChocoInstallResult <> '' then
     begin
        // If Chocolatey failed to install, we can't proceed with FFmpeg
@@ -226,45 +253,66 @@ begin
        Exit;
     end;
   end;
-  
+ 
   // 3. Choco is installed (or was just installed), install FFmpeg.
   WizardForm.StatusLabel.Caption := 'Installing FFmpeg via Chocolatey (this may take a few minutes)...';
   WizardForm.ProgressGauge.Style := npbstMarquee;
-  
+ 
   try
     // Determine path to choco. If we just installed it, it might not be in PATH yet for the installer process.
     // Try the standard install location first.
     ChocoExePath := 'C:\ProgramData\chocolatey\bin\choco.exe';
-    
+   
     if FileExists(ChocoExePath) then
     begin
        // Use absolute path
-       if not Exec(ChocoExePath, 'install ffmpeg -y', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+       if ShowDetails then
        begin
-         Result := 'Failed to launch Chocolatey (Absolute Path) to install FFmpeg. Code: ' + IntToStr(ResultCode);
-         Exit;
+         if not Exec(ChocoExePath, 'install ffmpeg -y', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+         begin
+           Result := 'Failed to launch Chocolatey (Absolute Path) to install FFmpeg. Code: ' + IntToStr(ResultCode);
+           Exit;
+         end;
+       end
+       else
+       begin
+         if not Exec(ExpandConstant('{cmd}'), '/C "' + ChocoExePath + '" install ffmpeg -y > "' + LogPath + '" 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+         begin
+           Result := 'Failed to launch Chocolatey (Absolute Path) to install FFmpeg. Code: ' + IntToStr(ResultCode);
+           Exit;
+         end;
        end;
     end
     else
     begin
        // Fallback to global PATH
-       if not Exec(ExpandConstant('{cmd}'), '/C choco install ffmpeg -y', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+       if ShowDetails then
        begin
-         Result := 'Failed to launch Chocolatey (Global PATH) to install FFmpeg. Code: ' + IntToStr(ResultCode);
-         Exit;
+         if not Exec('choco.exe', 'install ffmpeg -y', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+         begin
+           Result := 'Failed to launch Chocolatey (Global PATH) to install FFmpeg. Code: ' + IntToStr(ResultCode);
+           Exit;
+         end;
+       end
+       else
+       begin
+         if not Exec(ExpandConstant('{cmd}'), '/C choco install ffmpeg -y > "' + LogPath + '" 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+         begin
+           Result := 'Failed to launch Chocolatey (Global PATH) to install FFmpeg. Code: ' + IntToStr(ResultCode);
+           Exit;
+         end;
        end;
     end;
-
     if ResultCode <> 0 then
     begin
-      Result := 'Chocolatey failed to install FFmpeg. Code: ' + IntToStr(ResultCode);
+      Result := 'Chocolatey failed to install FFmpeg. Code: ' + IntToStr(ResultCode) + '. Check log at ' + LogPath + ' for details.';
       Exit;
     end;
   finally
     WizardForm.ProgressGauge.Style := npbstNormal;
     WizardForm.StatusLabel.Caption := '';
   end;
-  
+ 
   // 4. Verify installation using full path
   FFmpegExePath := 'C:\ProgramData\chocolatey\bin\ffmpeg.exe';
   if not FileExists(FFmpegExePath) then
@@ -272,17 +320,16 @@ begin
     Result := 'FFmpeg installed but executable not found in expected path.';
     Exit;
   end;
-  
+ 
   if not Exec(FFmpegExePath, '-version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
   begin
     Result := 'FFmpeg installed but -version failed even with full path. Code: ' + IntToStr(ResultCode);
     Exit;
   end;
-  
+ 
   InstalledFFmpeg := True; // Flag for restart
   Result := ''; // Success
 end;
-
 // Main function called by Setup
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
@@ -291,7 +338,7 @@ var
 begin
   InstalledPandoc := False;
   InstalledFFmpeg := False;
-  
+ 
   // First, check/install Pandoc
   PandocResult := InstallPandoc();
   if PandocResult <> '' then
@@ -299,7 +346,7 @@ begin
     Result := PandocResult; // Return Pandoc error
     Exit;
   end;
-  
+ 
   // Second, check/install FFmpeg (and Choco if needed)
   FFmpegResult := InstallFFmpeg();
   if FFmpegResult <> '' then
@@ -307,10 +354,10 @@ begin
     Result := FFmpegResult; // Return FFmpeg error
     Exit;
   end;
-  
+ 
   // If either was freshly installed, request restart for PATH updates
   if InstalledPandoc or InstalledFFmpeg then
     NeedsRestart := True;
-  
+ 
   Result := ''; // All good, both are installed
 end;
