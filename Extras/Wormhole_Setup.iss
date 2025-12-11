@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 ; Non-commercial use only
 #define MyAppName "Wormhole"
-#define MyAppVersion "1.2.0"
+#define MyAppVersion "1.2.1"
 #define MyAppPublisher "Nova Foundry"
 #define MyAppURL "novafoundry.ca/wormhole"
 #define MyAppExeName "wormhole.exe"
@@ -30,9 +30,11 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
 LicenseFile=C:\Users\jackp\Downloads\Wormhole\LICENSE.txt
-; Uncomment the following line to run in non administrative install mode (install for current user only).
-;PrivilegesRequired=lowest
+
+; *** MODIFICATION: Chocolatey requires Admin rights ***
+PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
+
 OutputDir=C:\Users\jackp\Downloads
 OutputBaseFilename=Wormhole_setup
 SetupIconFile=C:\Users\jackp\Downloads\Installer Icon template.ico
@@ -140,15 +142,12 @@ begin
   end;
   
   // 4. Verify installation using full path (since PATH may not update yet)
-  // Primary path for 64-bit all-users install
   PandocExePath := ExpandConstant('{commonpf}\Pandoc\pandoc.exe');
   if not FileExists(PandocExePath) then
   begin
-    // Fallback: Check x86 Program Files (older or misconfigured installs)
     PandocExePath := ExpandConstant('{pf}\Pandoc\pandoc.exe');
     if not FileExists(PandocExePath) then
     begin
-      // Fallback: Per-user install (if ALLUSERS failed)
       PandocExePath := ExpandConstant('{localappdata}\Programs\Pandoc\pandoc.exe');
       if not FileExists(PandocExePath) then
       begin
@@ -158,7 +157,6 @@ begin
     end;
   end;
   
-  // Run --version with full path
   if not Exec(PandocExePath, '--version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
   begin
     Result := 'Pandoc installed but --version failed even with full path. Code: ' + IntToStr(ResultCode);
@@ -169,61 +167,112 @@ begin
   Result := ''; // Success
 end;
 
+// *** NEW FUNCTION: Helper to install Chocolatey ***
+function InstallChocolatey(): String;
+var
+  ResultCode: Integer;
+  ChocoInstallScript: String;
+begin
+  WizardForm.StatusLabel.Caption := 'Installing Chocolatey package manager...';
+  
+  // Official Chocolatey install command
+  ChocoInstallScript := 'Set-ExecutionPolicy Bypass -Scope Process -Force; ' +
+                        '[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; ' +
+                        'iex ((New-Object System.Net.WebClient).DownloadString(''https://community.chocolatey.org/install.ps1''))';
+
+  // Run PowerShell with SW_SHOW to show the terminal to the user
+  if not Exec('powershell.exe', '-NoProfile -InputFormat None -ExecutionPolicy Bypass -Command "' + ChocoInstallScript + '"', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+  begin
+    Result := 'Failed to launch PowerShell for Chocolatey installation. Code: ' + IntToStr(ResultCode);
+    Exit;
+  end;
+
+  if ResultCode <> 0 then
+  begin
+    Result := 'Chocolatey installation failed. Code: ' + IntToStr(ResultCode);
+    Exit;
+  end;
+
+  Result := '';
+end;
+
 // Function to handle FFmpeg installation
 function InstallFFmpeg(): String;
 var
   ResultCode: Integer;
   FFmpegExePath: String;
+  ChocoExePath: String;
+  ChocoInstallResult: String;
 begin
   InstalledFFmpeg := False;
+  
   // 1. Check if FFmpeg is already installed via PATH
   if Exec(ExpandConstant('{cmd}'), '/C ffmpeg -version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
   begin
     Result := ''; // Already installed, success
     Exit;
   end;
-  // 2. If not, check if Chocolatey is installed
+  
+  // 2. Check if Chocolatey is installed
   if not Exec(ExpandConstant('{cmd}'), '/C choco -v', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
   begin
-    // Choco is not installed. Inform the user.
-    MsgBox('FFmpeg (a required dependency) is not installed.' + #13#10 + #13#10 +
-           'This installer can use Chocolatey (choco) to install it, but choco was not found on your system.' + #13#10 + #13#10 +
-           'Please install FFmpeg manually, or install Chocolatey and re-run this setup.',
-           mbInformation, MB_OK);
-    // Optional: Abort if FFmpeg is required (uncomment if needed)
-    // Result := 'FFmpeg installation required but Chocolatey not found.';
-    // Exit;
-    Result := ''; // Don't abort setup, just inform
-    Exit;
-  end;
-  // 3. Choco is installed, but FFmpeg is not. Install it.
-  // Show a marquee progress bar since choco can take a while
-  WizardForm.StatusLabel.Caption := 'Chocolatey is found. Installing FFmpeg (this may take a few minutes)...';
-  WizardForm.ProgressGauge.Style := npbstMarquee;
-  try
-    // Run choco install. Using SW_SHOW lets the user see choco's progress.
-    if not Exec(ExpandConstant('{cmd}'), '/C choco install ffmpeg -y', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+    // *** MODIFICATION: Install Chocolatey if missing ***
+    ChocoInstallResult := InstallChocolatey();
+    
+    if ChocoInstallResult <> '' then
     begin
-      Result := 'Failed to launch Chocolatey to install FFmpeg. Code: ' + IntToStr(ResultCode);
-      Exit;
+       // If Chocolatey failed to install, we can't proceed with FFmpeg
+       Result := ChocoInstallResult;
+       Exit;
     end;
+  end;
+  
+  // 3. Choco is installed (or was just installed), install FFmpeg.
+  WizardForm.StatusLabel.Caption := 'Installing FFmpeg via Chocolatey (this may take a few minutes)...';
+  WizardForm.ProgressGauge.Style := npbstMarquee;
+  
+  try
+    // Determine path to choco. If we just installed it, it might not be in PATH yet for the installer process.
+    // Try the standard install location first.
+    ChocoExePath := 'C:\ProgramData\chocolatey\bin\choco.exe';
+    
+    if FileExists(ChocoExePath) then
+    begin
+       // Use absolute path
+       if not Exec(ChocoExePath, 'install ffmpeg -y', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+       begin
+         Result := 'Failed to launch Chocolatey (Absolute Path) to install FFmpeg. Code: ' + IntToStr(ResultCode);
+         Exit;
+       end;
+    end
+    else
+    begin
+       // Fallback to global PATH
+       if not Exec(ExpandConstant('{cmd}'), '/C choco install ffmpeg -y', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+       begin
+         Result := 'Failed to launch Chocolatey (Global PATH) to install FFmpeg. Code: ' + IntToStr(ResultCode);
+         Exit;
+       end;
+    end;
+
     if ResultCode <> 0 then
     begin
       Result := 'Chocolatey failed to install FFmpeg. Code: ' + IntToStr(ResultCode);
       Exit;
     end;
   finally
-    // Restore normal progress bar and clear status
     WizardForm.ProgressGauge.Style := npbstNormal;
     WizardForm.StatusLabel.Caption := '';
   end;
-  // 4. Verify installation using full path (in case PATH not updated)
+  
+  // 4. Verify installation using full path
   FFmpegExePath := 'C:\ProgramData\chocolatey\bin\ffmpeg.exe';
   if not FileExists(FFmpegExePath) then
   begin
     Result := 'FFmpeg installed but executable not found in expected path.';
     Exit;
   end;
+  
   if not Exec(FFmpegExePath, '-version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
   begin
     Result := 'FFmpeg installed but -version failed even with full path. Code: ' + IntToStr(ResultCode);
@@ -250,7 +299,8 @@ begin
     Result := PandocResult; // Return Pandoc error
     Exit;
   end;
-  // Second, check/install FFmpeg
+  
+  // Second, check/install FFmpeg (and Choco if needed)
   FFmpegResult := InstallFFmpeg();
   if FFmpegResult <> '' then
   begin

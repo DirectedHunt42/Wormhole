@@ -24,6 +24,7 @@ import csv
 import webbrowser
 import subprocess
 import re
+import darkdetect
 try:
     from striprtf.striprtf import rtf_to_text
     RTF_SUPPORT = True
@@ -43,12 +44,20 @@ print("Python executable:", sys.executable)
 print("Python version:", sys.version)
 print("sys.path (search paths for imports):", sys.path)
 
-BG = "#0a0812"
-CARD = "#120f1e"
-CARD_HOVER = "#19172b"
-ACCENT = "#7aa3ff"
-ACCENT_DIM = "#4d6bbc"
-TEXT = "#e8e6f5"
+if (darkdetect.theme() == "Light"):
+    BG = "#f7f8ff"
+    CARD = "#ffffff"
+    CARD_HOVER = "#e7e9f5"
+    ACCENT = "#3a63d9"
+    ACCENT_DIM = "#2a4ba8"
+    TEXT = "#1a1b25"
+else:
+    BG = "#0a0812"
+    CARD = "#120f1e"
+    CARD_HOVER = "#19172b"
+    ACCENT = "#7aa3ff"
+    ACCENT_DIM = "#4d6bbc"
+    TEXT = "#e8e6f5"
 
 def resource_path(relative_path):
     """Get absolute path to resource, works for dev and for PyInstaller onefile."""
@@ -58,8 +67,10 @@ def resource_path(relative_path):
     except AttributeError:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
-
-WORMHOLE_IMAGE_PATH = resource_path(os.path.join("Icons", "wormhole_Transparent_Light.png"))
+if (darkdetect.theme() == "Light"):
+    WORMHOLE_IMAGE_PATH = resource_path(os.path.join("Icons", "wormhole_Transparent.png"))
+else:
+    WORMHOLE_IMAGE_PATH = resource_path(os.path.join("Icons", "wormhole_Transparent_Light.png"))
 try:
     WORMHOLE_PIL_IMAGE = Image.open(WORMHOLE_IMAGE_PATH)
 except Exception as e:
@@ -82,7 +93,7 @@ FONT_FILES = [
     "PathwayExtreme_36pt-Thin.ttf"
 ]
 
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 GITHUB_URL = "https://github.com/DirectedHunt42/Wormhole"
 
 # Set up customtkinter
@@ -534,15 +545,15 @@ class WormholeApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Wormhole File Converter")
-        self.geometry("400x775")
+        self.geometry("400x740")
         self.configure(fg_color=BG)
         # Center the main window
         self.update_idletasks()
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
         x = (screen_width // 2) - (400 // 2)
-        y = (screen_height // 2) - (775 // 2)
-        self.geometry(f"400x775+{x}+{y}")
+        y = (screen_height // 2) - (740 // 2) - 30
+        self.geometry(f"400x740+{x}+{y}")
         self._build_ui()
         self.check_for_updates()
         if sys.platform.startswith('win'):
@@ -660,18 +671,39 @@ class WormholeApp(ctk.CTk):
 
         about_label = ctk.CTkLabel(self, text=f"Wormhole File Converter\nVersion {VERSION}\n© 2025 Nova Foundry", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
         about_label.pack(pady=20)
-        support_link = ctk.CTkLabel(self, text="Support Nova Foundry", font=("Nunito", 12, "underline"),
-                                    text_color=ACCENT, fg_color=BG, cursor="hand2")
-        support_link.pack(pady=(0, 12))
-        official_link = ctk.CTkLabel(self, text="Visit Official Website", font=("Nunito", 12, "underline"),
-                                    text_color=ACCENT, fg_color=BG, cursor="hand2")
-        official_link.pack(pady=(0, 12))
+
+        links_frame = ctk.CTkFrame(self, fg_color=BG)
+
+        support_link = ctk.CTkLabel(
+            links_frame, text="Support Nova Foundry",
+            font=("Nunito", 12, "underline"), text_color=ACCENT,
+            fg_color=BG, cursor="hand2"
+        )
+        support_link.pack(side="left", padx=10)
+
+        official_link = ctk.CTkLabel(
+            links_frame, text="Visit Official Website",
+            font=("Nunito", 12, "underline"), text_color=ACCENT,
+            fg_color=BG, cursor="hand2"
+        )
+
+        help_link = ctk.CTkLabel(links_frame, text="Help", font=("Nunito", 12, "underline"), text_color=ACCENT, fg_color=BG, cursor="hand2")
+        help_link.pack(side="left", padx=10)
+
+        official_link.pack(side="left", padx=10)
+
+        links_frame.pack()
+
+
         def open_official_link(event):
             webbrowser.open_new("https://novafoundry.ca")
         def open_support_link(event):
             webbrowser.open_new("https://buymeacoffee.com/novafoundry")
+        def open_help_link(event):
+            webbrowser.open_new("https://github.com/DirectedHunt42/Wormhole/wiki")
         support_link.bind("<Button-1>", open_support_link)
         official_link.bind("<Button-1>", open_official_link)
+        help_link.bind("<Button-1>", open_help_link)
 
     def check_for_updates(self):
         try:

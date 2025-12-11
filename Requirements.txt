@@ -13,3 +13,4 @@ moviepy
 pozalabs-pydub
 requests
 trimesh
+darkdetect
