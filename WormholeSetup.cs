@@ -17,6 +17,7 @@ namespace WormholeSetup
         private CheckBox showDetailsCheck;
         private Button startButton;
         private TextBox statusTextBox;
+        private Label versionLabel;
 
         public SetupForm()
         {
@@ -35,12 +36,15 @@ namespace WormholeSetup
 
             statusTextBox = new TextBox { Multiline = true, ScrollBars = ScrollBars.Vertical, Left = 20, Top = 180, Width = 340, Height = 80, ReadOnly = true };
 
+            versionLabel = new Label { Text = "Version 1.0.0", Left = 280, Top = 20, Width = 100 };
+
             this.Controls.Add(forcePandocCheck);
             this.Controls.Add(forceChocoCheck);
             this.Controls.Add(forceFFmpegCheck);
             this.Controls.Add(showDetailsCheck);
             this.Controls.Add(startButton);
             this.Controls.Add(statusTextBox);
+            this.Controls.Add(versionLabel);
         }
 
         private async Task RunSetup()
