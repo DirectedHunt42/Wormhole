@@ -1,6 +1,6 @@
 # 📜 Code of Conduct
 
-Welcome to this project! 🎉  
+Welcome to this Wormhole! 🎉  
 To keep this community positive, helpful, and welcoming, please follow the guidelines below.
 
 ---
