@@ -3,3 +3,4 @@ Log/
 bin/
 obj/
 Release/
+*.exe
