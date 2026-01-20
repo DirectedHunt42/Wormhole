@@ -93,7 +93,7 @@ FONT_FILES = [
     "PathwayExtreme_36pt-Thin.ttf"
 ]
 
-VERSION = "1.2.2"
+VERSION = "1.2.3"
 GITHUB_URL = "https://github.com/DirectedHunt42/Wormhole"
 
 # Set up customtkinter
@@ -673,7 +673,7 @@ class WormholeApp(ctk.CTk):
         btn_media = ctk.CTkButton(self, text="Media", command=self.open_media_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_media.pack(pady=5)
 
-        about_label = ctk.CTkLabel(self, text=f"Wormhole File Converter\nVersion {VERSION}\n© 2025 Nova Foundry", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
+        about_label = ctk.CTkLabel(self, text=f"Wormhole File Converter\nVersion {VERSION}\n© 2025-2026 Nova Foundry", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
         about_label.pack(pady=20)
 
         links_frame = ctk.CTkFrame(self, fg_color=BG)
@@ -702,7 +702,7 @@ class WormholeApp(ctk.CTk):
         def open_official_link(event):
             webbrowser.open_new("https://novafoundry.ca")
         def open_support_link(event):
-            webbrowser.open_new("https://buymeacoffee.com/novafoundry")
+            webbrowser.open_new("https://novafoundry.ca/support")
         def open_help_link(event):
             webbrowser.open_new("https://github.com/DirectedHunt42/Wormhole/wiki")
         support_link.bind("<Button-1>", open_support_link)
@@ -738,8 +738,7 @@ class WormholeApp(ctk.CTk):
                                 tmp.write(chunk)
                             tmp_path = tmp.name
                         os.startfile(tmp_path)
-                        # Optionally exit the app after starting the installer
-                        self.quit()
+                        sys.exit(0)
                 except Exception as e:
                     messagebox.showerror("Error", f"Failed to download or run update: {str(e)}")
                 return
