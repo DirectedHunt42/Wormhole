@@ -34,18 +34,9 @@ try:
 except ImportError:
     TRIMESH_SUPPORT = False
 
-# Add envelope to sys.path
-sys.path.insert(0, os.path.abspath('envelope'))
-try:
-    from envelope import Converter
-    ENVELOPE_SUPPORT = True
-except ImportError:
-    ENVELOPE_SUPPORT = False
-
-# Debug prints to diagnose environment
-print("Python executable:", sys.executable)
-print("Python version:", sys.version)
-print("sys.path (search paths for imports):", sys.path)
+# Check for LibreOffice
+has_libreoffice = shutil.which("soffice") is not None or shutil.which("libreoffice") is not None
+ENVELOPE_SUPPORT = has_libreoffice
 
 if (darkdetect.theme() == "Light"):
     BG = "#f7f8ff"
@@ -72,8 +63,12 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 if (darkdetect.theme() == "Light"):
     WORMHOLE_IMAGE_PATH = resource_path(os.path.join("Icons", "wormhole_Transparent.png"))
+    ABOUT_IMAGE1_PATH = resource_path(os.path.join("Icons", "Nova_foundry_wide_transparent_dark.png"))
+    ABOUT_IMAGE2_PATH = resource_path(os.path.join("Icons", "p2r3.png"))
 else:
     WORMHOLE_IMAGE_PATH = resource_path(os.path.join("Icons", "wormhole_Transparent_Light.png"))
+    ABOUT_IMAGE1_PATH = resource_path(os.path.join("Icons", "Nova_foundry_wide_transparent.png"))
+    ABOUT_IMAGE2_PATH = resource_path(os.path.join("Icons", "p2r3.png"))
 try:
     WORMHOLE_PIL_IMAGE = Image.open(WORMHOLE_IMAGE_PATH)
 except Exception as e:
@@ -96,8 +91,9 @@ FONT_FILES = [
     "PathwayExtreme_36pt-Thin.ttf"
 ]
 
-VERSION = "1.2.5"
+VERSION = "1.3.0"
 GITHUB_URL = "https://github.com/DirectedHunt42/Wormhole"
+ENVELOPE_REPO_URL = "https://github.com/p2r3/envelope"
 
 # Set up customtkinter
 if (darkdetect.theme() == "Light"):
@@ -155,6 +151,7 @@ formats = {
 if ENVELOPE_SUPPORT:
     formats['docs']['extensions'].append('.rtf')
     formats['docs']['targets'].append('RTF')
+
 if not TRIMESH_SUPPORT:
     if '3d' in formats:
         del formats['3d']
@@ -191,12 +188,21 @@ def convert_docs(file_path, target):
     input_ext = os.path.splitext(file_path)[1].lower()[1:]
     new_file_path = os.path.splitext(file_path)[0] + '.' + target.lower()
     if ENVELOPE_SUPPORT:
+        print("Attempting conversion with LibreOffice...")
         try:
-            converter = Converter()
-            converter.convert(file_path, new_file_path)
+            ext = target.lower()
+            out_dir = os.path.dirname(new_file_path)
+            cmd = ['soffice', '--headless', '--convert-to', ext, file_path, '--outdir', out_dir]
+            subprocess.check_call(cmd)
+            produced = os.path.join(out_dir, os.path.splitext(os.path.basename(file_path))[0] + '.' + ext)
+            if produced != new_file_path:
+                os.rename(produced, new_file_path)
+            print("LibreOffice conversion successful.")
             return new_file_path
         except Exception as e:
-            print(f"Envelope conversion failed: {e}. Falling back to manual conversion.")
+            print(f"LibreOffice conversion failed: {e}. Falling back to manual conversion.")
+    else:
+        print("LibreOffice not supported. Falling back to manual conversion.")
     # Fallback to original manual conversion
     text = ""
     if input_ext in ["txt", "md"]:
@@ -218,7 +224,7 @@ def convert_docs(file_path, target):
         doc = ezodf.opendoc(file_path)
         text = '\n'.join(obj.text or '' for obj in doc.body if obj.kind == 'Paragraph')
     elif input_ext == "rtf":
-        raise ValueError("RTF input not supported without envelope")
+        raise ValueError("RTF input not supported without LibreOffice")
     else:
         raise ValueError("Unsupported input format")
 
@@ -240,7 +246,7 @@ def convert_docs(file_path, target):
             doc.body.append(ezodf.Paragraph(para_text))
         doc.save()
     elif target == "RTF":
-        raise ValueError("RTF output not supported without envelope")
+        raise ValueError("RTF output not supported without LibreOffice")
     else:
         raise ValueError("Unsupported target format")
     return new_file_path
@@ -249,12 +255,21 @@ def convert_presentations(file_path, target):
     input_ext = os.path.splitext(file_path)[1].lower()[1:]
     new_file_path = os.path.splitext(file_path)[0] + '.' + target.lower()
     if ENVELOPE_SUPPORT:
+        print("Attempting conversion with LibreOffice...")
         try:
-            converter = Converter()
-            converter.convert(file_path, new_file_path)
+            ext = target.lower()
+            out_dir = os.path.dirname(new_file_path)
+            cmd = ['soffice', '--headless', '--convert-to', ext, file_path, '--outdir', out_dir]
+            subprocess.check_call(cmd)
+            produced = os.path.join(out_dir, os.path.splitext(os.path.basename(file_path))[0] + '.' + ext)
+            if produced != new_file_path:
+                os.rename(produced, new_file_path)
+            print("LibreOffice conversion successful.")
             return new_file_path
         except Exception as e:
-            print(f"Envelope conversion failed: {e}. Falling back to manual conversion.")
+            print(f"LibreOffice conversion failed: {e}. Falling back to manual conversion.")
+    else:
+        print("LibreOffice not supported. Falling back to manual conversion.")
     # Fallback to original
     text = ""
     if input_ext == "pptx":
@@ -416,12 +431,21 @@ def convert_spreadsheets(file_path, target):
     input_ext = os.path.splitext(file_path)[1].lower()[1:]
     new_file_path = os.path.splitext(file_path)[0] + '.' + target.lower()
     if ENVELOPE_SUPPORT:
+        print("Attempting conversion with LibreOffice...")
         try:
-            converter = Converter()
-            converter.convert(file_path, new_file_path)
+            ext = target.lower()
+            out_dir = os.path.dirname(new_file_path)
+            cmd = ['soffice', '--headless', '--convert-to', ext, file_path, '--outdir', out_dir]
+            subprocess.check_call(cmd)
+            produced = os.path.join(out_dir, os.path.splitext(os.path.basename(file_path))[0] + '.' + ext)
+            if produced != new_file_path:
+                os.rename(produced, new_file_path)
+            print("LibreOffice conversion successful.")
             return new_file_path
         except Exception as e:
-            print(f"Envelope conversion failed: {e}. Falling back to manual conversion.")
+            print(f"LibreOffice conversion failed: {e}. Falling back to manual conversion.")
+    else:
+        print("LibreOffice not supported. Falling back to manual conversion.")
     # Fallback to original
     data = []
     if input_ext == "xlsx":
@@ -565,15 +589,14 @@ class WormholeApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Wormhole File Converter")
-        self.geometry("400x740")
         self.configure(fg_color=BG)
         # Center the main window
         self.update_idletasks()
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
         x = (screen_width // 2) - (400 // 2)
-        y = (screen_height // 2) - (740 // 2) - 30
-        self.geometry(f"400x740+{x}+{y}")
+        y = (screen_height // 2) - (700 // 2) - 30
+        self.geometry(f"400x700+{x}+{y}")
         self._build_ui()
         self.check_for_updates()
         if sys.platform.startswith('win'):
@@ -659,65 +682,109 @@ class WormholeApp(ctk.CTk):
             except Exception as e:
                 print(f"Could not set application icon: {e}")
                 
-        # Create a scrollable frame to hold all content
-        scrollable_frame = ctk.CTkScrollableFrame(self, fg_color=BG)
-        scrollable_frame.pack(fill='both', expand=True)
-
         # Custom label for instructions
         image = ctk.CTkImage(light_image=WORMHOLE_PIL_IMAGE, dark_image=WORMHOLE_PIL_IMAGE, size=(306, 204))
-        img_label = ctk.CTkLabel(scrollable_frame, image=image, text="", fg_color=BG)
+        img_label = ctk.CTkLabel(self, image=image, text="", fg_color=BG)
         img_label.pack(pady=10)
 
-        label = ctk.CTkLabel(scrollable_frame, text="Select a file type category:", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 12))
+        label = ctk.CTkLabel(self, text="Select a file type category:", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 12))
         label.pack(pady=20)
 
         # Buttons for each category (using semibold for buttons if desired; otherwise keep normal)
-        btn_docs = ctk.CTkButton(scrollable_frame, text="Docs", command=self.open_docs_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
+        docs_text = "Docs 📨" if ENVELOPE_SUPPORT else "Docs"
+        btn_docs = ctk.CTkButton(self, text=docs_text, command=self.open_docs_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_docs.pack(pady=5)
 
-        btn_presentations = ctk.CTkButton(scrollable_frame, text="Presentations", command=self.open_presentations_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
+        presentations_text = "Presentations 📨" if ENVELOPE_SUPPORT else "Presentations"
+        btn_presentations = ctk.CTkButton(self, text=presentations_text, command=self.open_presentations_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_presentations.pack(pady=5)
 
-        btn_images = ctk.CTkButton(scrollable_frame, text="Images", command=self.open_images_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
+        btn_images = ctk.CTkButton(self, text="Images", command=self.open_images_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_images.pack(pady=5)
 
-        btn_archive = ctk.CTkButton(scrollable_frame, text="Archive", command=self.open_archive_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
+        btn_archive = ctk.CTkButton(self, text="Archive", command=self.open_archive_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_archive.pack(pady=5)
 
-        btn_spreadsheets = ctk.CTkButton(scrollable_frame, text="Spreadsheets", command=self.open_spreadsheets_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
+        spreadsheets_text = "Spreadsheets 📨" if ENVELOPE_SUPPORT else "Spreadsheets"
+        btn_spreadsheets = ctk.CTkButton(self, text=spreadsheets_text, command=self.open_spreadsheets_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_spreadsheets.pack(pady=5)
 
-        btn_3d = ctk.CTkButton(scrollable_frame, text="3D Models", command=self.open_3d_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
+        btn_3d = ctk.CTkButton(self, text="3D Models", command=self.open_3d_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_3d.pack(pady=5)
 
-        btn_media = ctk.CTkButton(scrollable_frame, text="Media", command=self.open_media_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
+        btn_media = ctk.CTkButton(self, text="Media", command=self.open_media_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_media.pack(pady=5)
 
-        about_label = ctk.CTkLabel(scrollable_frame, text=f"Wormhole File Converter\nVersion {VERSION}\n© 2025-2026 Nova Foundry", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
-        about_label.pack(pady=20)
+        btn_about = ctk.CTkButton(self, text="About", command=self.open_about, fg_color='#888', text_color=BG, hover_color='#666', corner_radius=20, width=100, font=(FONT_FAMILY_SEMIBOLD, 10))
+        btn_about.pack(pady=10)
 
-        links_frame = ctk.CTkFrame(scrollable_frame, fg_color=BG)
+    def open_about(self):
+        about_win = ctk.CTkToplevel(self)
+        about_win.title("About Wormhole")
+        about_win.geometry("350x600")
+        about_win.configure(fg_color=BG)
+        # Center the window
+        about_win.update_idletasks()
+        screen_width = about_win.winfo_screenwidth()
+        screen_height = about_win.winfo_screenheight()
+        x = (screen_width // 2) - (350 // 2)
+        y = (screen_height // 2) - (600 // 2)
+        about_win.geometry(f"350x600+{x}+{y}")
+        # Set icon
+        if os.path.exists(APP_ICON_PATH):
+            try:
+                about_win.after(250, lambda: about_win.iconbitmap(APP_ICON_PATH))
+            except Exception as e:
+                print(f"Could not set icon for about window: {e}")
+        about_win.transient(self)
+        about_win.grab_set()
 
-        support_link = ctk.CTkLabel(
-            links_frame, text="Support Nova Foundry",
-            font=("Nunito", 12, "underline"), text_color=ACCENT,
-            fg_color=BG, cursor="hand2"
-        )
+        # Image 1
+        try:
+            img1 = Image.open(ABOUT_IMAGE1_PATH)
+            if img1.height > 100:
+                new_width = int(img1.width * (100 / img1.height))
+                img1 = img1.resize((new_width, 100), Image.Resampling.LANCZOS)
+            ctk_img1 = ctk.CTkImage(light_image=img1, dark_image=img1, size=(img1.width, img1.height))
+            label_img1 = ctk.CTkLabel(about_win, image=ctk_img1, text="")
+            label_img1.pack(pady=10)
+        except Exception as e:
+            print(f"Could not load about image 1: {e}")
+
+        # Image 2
+        try:
+            img2 = Image.open(ABOUT_IMAGE2_PATH)
+            if img2.height > 100:
+                new_width = int(img2.width * (100 / img2.height))
+                img2 = img2.resize((new_width, 100), Image.Resampling.LANCZOS)
+            ctk_img2 = ctk.CTkImage(light_image=img2, dark_image=img2, size=(img2.width, img2.height))
+            label_img2 = ctk.CTkLabel(about_win, image=ctk_img2, text="")
+            label_img2.pack(pady=10)
+        except Exception as e:
+            print(f"Could not load about image 2: {e}")
+
+        label_version = ctk.CTkLabel(about_win, text=f"Version {VERSION}", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 16))
+        label_version.pack()
+
+        envelope_copyright = ctk.CTkLabel(about_win, text="Envelope © p2r3", font=(FONT_FAMILY_REGULAR, 10), text_color=ACCENT, fg_color=BG, cursor="hand2")
+        envelope_copyright.pack()
+        envelope_copyright.bind("<Button-1>", lambda e: webbrowser.open_new(ENVELOPE_REPO_URL))
+
+        nova_copyright = ctk.CTkLabel(about_win, text="© Nova Foundry", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
+        nova_copyright.pack()
+
+        github_link = ctk.CTkLabel(about_win, text="Github Repo", font=(FONT_FAMILY_REGULAR, 10), text_color=ACCENT, fg_color=BG, cursor="hand2")
+        github_link.pack()
+        github_link.bind("<Button-1>", lambda e: webbrowser.open_new(GITHUB_URL))
+
+        links_frame = ctk.CTkFrame(about_win, fg_color=BG)
+        support_link = ctk.CTkLabel(links_frame, text="Support Nova Foundry", font=(FONT_FAMILY_REGULAR, 10), text_color=ACCENT, fg_color=BG, cursor="hand2")
         support_link.pack(side="left", padx=10)
-
-        official_link = ctk.CTkLabel(
-            links_frame, text="Visit Official Website",
-            font=("Nunito", 12, "underline"), text_color=ACCENT,
-            fg_color=BG, cursor="hand2"
-        )
-
-        help_link = ctk.CTkLabel(links_frame, text="Help", font=("Nunito", 12, "underline"), text_color=ACCENT, fg_color=BG, cursor="hand2")
-        help_link.pack(side="left", padx=10)
-
+        official_link = ctk.CTkLabel(links_frame, text="Visit Official Website", font=(FONT_FAMILY_REGULAR, 10), text_color=ACCENT, fg_color=BG, cursor="hand2")
         official_link.pack(side="left", padx=10)
-
-        links_frame.pack()
-
+        help_link = ctk.CTkLabel(links_frame, text="Help", font=(FONT_FAMILY_REGULAR, 10), text_color=ACCENT, fg_color=BG, cursor="hand2")
+        help_link.pack(side="left", padx=10)
+        links_frame.pack(pady=10)
 
         def open_official_link(event):
             webbrowser.open_new("https://novafoundry.ca")
@@ -729,8 +796,17 @@ class WormholeApp(ctk.CTk):
         official_link.bind("<Button-1>", open_official_link)
         help_link.bind("<Button-1>", open_help_link)
 
-        # Hide the scrollbar permanently
-        scrollable_frame._scrollbar.grid_forget()
+        # License
+        license_path = resource_path("LICENSE.txt")
+        if os.path.exists(license_path):
+            with open(license_path, 'r', encoding='utf-8-sig') as f:
+                license_text = f.read().strip()
+        else:
+            license_text = "LICENSE.txt not found."
+        textbox = ctk.CTkTextbox(about_win, width=300, height=200)
+        textbox.insert("0.0", license_text)
+        textbox.configure(state="disabled")
+        textbox.pack(pady=10)
 
     def check_for_updates(self):
         try:
@@ -813,10 +889,10 @@ def open_docs_window(master, preselected_file=None):
     file_label = ctk.CTkLabel(docs_win, text="No file selected", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
     file_label.pack(pady=5)
 
-    target_var = ctk.StringVar(value="TXT")
-    combo_values = ["TXT", "DOCX", "HTML", "MD", "ODT"]
+    combo_values = ["TXT", "DOCX 📨", "HTML 📨", "MD", "ODT 📨"]
     if ENVELOPE_SUPPORT:
-        combo_values.append("RTF")
+        combo_values.append("RTF 📨")
+    target_var = ctk.StringVar(value="TXT")
     combo = ctk.CTkComboBox(docs_win, values=combo_values, variable=target_var, font=(FONT_FAMILY_REGULAR, 10), width=250)
     combo.pack(pady=5)
 
@@ -832,7 +908,8 @@ def open_docs_window(master, preselected_file=None):
         if not fp:
             messagebox.showerror("Error", "No file selected")
             return
-        target = target_var.get().upper()
+        target_display = target_var.get()
+        target = target_display.split(" 📨")[0].upper()
         input_ext = os.path.splitext(fp)[1].lower()[1:]
         if target.lower() == input_ext:
             messagebox.showwarning("Warning", "Input and output formats are the same")
@@ -843,7 +920,7 @@ def open_docs_window(master, preselected_file=None):
                 new_file_path = convert_docs(fp, target)
                 docs_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
             except FileNotFoundError:
-                docs_win.after(0, lambda: messagebox.showerror("Error", "Envelope requires LibreOffice. Please install LibreOffice."))
+                docs_win.after(0, lambda: messagebox.showerror("Error", "LibreOffice required for this conversion. Please install LibreOffice."))
             except Exception as e:
                 docs_win.after(0, lambda e=e: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
             finally:
@@ -899,8 +976,9 @@ def open_presentations_window(master, preselected_file=None):
     file_label = ctk.CTkLabel(pres_win, text="No file selected", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
     file_label.pack(pady=5)
 
-    target_var = ctk.StringVar(value="PDF")
-    combo = ctk.CTkComboBox(pres_win, values=["PPTX", "PDF", "TXT", "DOCX", "ODP"], variable=target_var, font=(FONT_FAMILY_REGULAR, 10), width=250)
+    combo_values = ["PPTX 📨", "PDF 📨", "TXT", "DOCX 📨", "ODP 📨"]
+    target_var = ctk.StringVar(value="PDF 📨")
+    combo = ctk.CTkComboBox(pres_win, values=combo_values, variable=target_var, font=(FONT_FAMILY_REGULAR, 10), width=250)
     combo.pack(pady=5)
 
     progress_bar = ctk.CTkProgressBar(pres_win, width=250, mode="indeterminate")
@@ -915,7 +993,8 @@ def open_presentations_window(master, preselected_file=None):
         if not fp:
             messagebox.showerror("Error", "No file selected")
             return
-        target = target_var.get().upper()
+        target_display = target_var.get()
+        target = target_display.split(" 📨")[0].upper()
         input_ext = os.path.splitext(fp)[1].lower()[1:]
         if target.lower() == input_ext:
             messagebox.showwarning("Warning", "Input and output formats are the same")
@@ -925,6 +1004,8 @@ def open_presentations_window(master, preselected_file=None):
             try:
                 new_file_path = convert_presentations(fp, target)
                 pres_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
+            except FileNotFoundError:
+                pres_win.after(0, lambda: messagebox.showerror("Error", "LibreOffice required for this conversion. Please install LibreOffice."))
             except Exception as e:
                 pres_win.after(0, lambda e=e: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
             finally:
@@ -1176,8 +1257,9 @@ def open_spreadsheets_window(master, preselected_file=None):
     file_label = ctk.CTkLabel(spreadsheets_win, text="No file selected", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
     file_label.pack(pady=5)
 
-    target_var = ctk.StringVar(value="XLSX")
-    combo = ctk.CTkComboBox(spreadsheets_win, values=["XLSX", "CSV", "ODS"], variable=target_var, font=(FONT_FAMILY_REGULAR, 10), width=250)
+    combo_values = ["XLSX 📨", "CSV", "ODS 📨"]
+    target_var = ctk.StringVar(value="XLSX 📨")
+    combo = ctk.CTkComboBox(spreadsheets_win, values=combo_values, variable=target_var, font=(FONT_FAMILY_REGULAR, 10), width=250)
     combo.pack(pady=5)
 
     progress_bar = ctk.CTkProgressBar(spreadsheets_win, width=250, mode="indeterminate")
@@ -1192,7 +1274,8 @@ def open_spreadsheets_window(master, preselected_file=None):
         if not fp:
             messagebox.showerror("Error", "No file selected")
             return
-        target = target_var.get().upper()
+        target_display = target_var.get()
+        target = target_display.split(" 📨")[0].upper()
         input_ext = os.path.splitext(fp)[1].lower()[1:]
         if target.lower() == input_ext:
             messagebox.showwarning("Warning", "Input and output formats are the same")
@@ -1202,6 +1285,8 @@ def open_spreadsheets_window(master, preselected_file=None):
             try:
                 new_file_path = convert_spreadsheets(fp, target)
                 spreadsheets_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
+            except FileNotFoundError:
+                spreadsheets_win.after(0, lambda: messagebox.showerror("Error", "LibreOffice required for this conversion. Please install LibreOffice."))
             except Exception as e:
                 spreadsheets_win.after(0, lambda e=e: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
             finally:
