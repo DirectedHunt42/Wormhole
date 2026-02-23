@@ -1,0 +1,3 @@
+[submodule "envelope"]
+	path = envelope
+	url = https://github.com/p2r3/envelope
