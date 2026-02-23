@@ -25,11 +25,6 @@ import webbrowser
 import subprocess
 import re
 import darkdetect
-try:
-    from striprtf.striprtf import rtf_to_text
-    RTF_SUPPORT = True
-except ImportError:
-    RTF_SUPPORT = False
 import ezodf
 import requests
 import json
@@ -38,6 +33,14 @@ try:
     TRIMESH_SUPPORT = True
 except ImportError:
     TRIMESH_SUPPORT = False
+
+# Add envelope to sys.path
+sys.path.insert(0, os.path.abspath('envelope'))
+try:
+    from envelope import Converter
+    ENVELOPE_SUPPORT = True
+except ImportError:
+    ENVELOPE_SUPPORT = False
 
 # Debug prints to diagnose environment
 print("Python executable:", sys.executable)
@@ -112,7 +115,6 @@ for font_file in FONT_FILES:
     else:
         print(f"Custom font file not found: {font_path}; falling back to default for this variant.")
 
-has_pandoc = shutil.which("pandoc") is not None
 has_ffmpeg = shutil.which("ffmpeg") is not None
 
 formats = {
@@ -150,9 +152,8 @@ formats = {
     },
 }
 
-if has_pandoc or RTF_SUPPORT:
+if ENVELOPE_SUPPORT:
     formats['docs']['extensions'].append('.rtf')
-if has_pandoc:
     formats['docs']['targets'].append('RTF')
 if not TRIMESH_SUPPORT:
     if '3d' in formats:
@@ -167,7 +168,7 @@ def get_category(file_path):
     lfp = file_path.lower()
     audio_exts = ('.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a')
     video_exts = ('.mp4', '.avi', '.mkv', '.mov')
-    if lfp.endswith(('.txt', '.pdf', '.docx', '.html', '.md', '.odt')) or (lfp.endswith('.rtf') and (has_pandoc or RTF_SUPPORT)):
+    if lfp.endswith(('.txt', '.pdf', '.docx', '.html', '.md', '.odt')) or (lfp.endswith('.rtf') and ENVELOPE_SUPPORT):
         return 'docs'
     elif lfp.endswith(('.pptx', '.odp')):
         return 'presentations'
@@ -189,65 +190,72 @@ def get_category(file_path):
 def convert_docs(file_path, target):
     input_ext = os.path.splitext(file_path)[1].lower()[1:]
     new_file_path = os.path.splitext(file_path)[0] + '.' + target.lower()
-    use_pandoc = has_pandoc and input_ext != "pdf" and target != "TXT" and target != "MD"
+    if ENVELOPE_SUPPORT:
+        try:
+            converter = Converter()
+            converter.convert(file_path, new_file_path)
+            return new_file_path
+        except Exception as e:
+            print(f"Envelope conversion failed: {e}. Falling back to manual conversion.")
+    # Fallback to original manual conversion
     text = ""
-    if not use_pandoc:
-        if input_ext in ["txt", "md"]:
-            with open(file_path, 'r') as f:
-                text = f.read()
-        elif input_ext == "pdf":
-            reader = PdfReader(file_path)
-            text = ''
-            for page in reader.pages:
-                text += page.extract_text() + '\n'
-        elif input_ext == "docx":
-            doc = Document(file_path)
-            text = '\n'.join([para.text for para in doc.paragraphs])
-        elif input_ext == "html":
-            with open(file_path, 'r') as f:
-                soup = BeautifulSoup(f.read(), 'html.parser')
-                text = soup.get_text()
-        elif input_ext == "odt":
-            doc = ezodf.opendoc(file_path)
-            text = '\n'.join(obj.text or '' for obj in doc.body if obj.kind == 'Paragraph')
-        elif input_ext == "rtf":
-            if RTF_SUPPORT:
-                with open(file_path, 'r') as f:
-                    rtf = f.read()
-                text = rtf_to_text(rtf)
-            else:
-                raise ValueError("RTF input not supported without striprtf or Pandoc")
-        else:
-            raise ValueError("Unsupported input format")
-
-        if target in ["TXT", "MD"]:
-            with open(new_file_path, 'w') as f:
-                f.write(text)
-        elif target == "DOCX":
-            doc = Document()
-            for para_text in text.split('\n'):
-                doc.add_paragraph(para_text)
-            doc.save(new_file_path)
-        elif target == "HTML":
-            with open(new_file_path, 'w') as f:
-                escaped_text = text.replace('<', '&lt;').replace('>', '&gt;')
-                f.write(f"<html><body><pre>{escaped_text}</pre></body></html>")
-        elif target == "ODT":
-            doc = ezodf.newdoc(doctype='odt', filename=new_file_path)
-            for para_text in text.split('\n'):
-                doc.body.append(ezodf.Paragraph(para_text))
-            doc.save()
-        elif target == "RTF":
-            raise ValueError("RTF output not supported without Pandoc")
-        else:
-            raise ValueError("Unsupported target format")
+    if input_ext in ["txt", "md"]:
+        with open(file_path, 'r') as f:
+            text = f.read()
+    elif input_ext == "pdf":
+        reader = PdfReader(file_path)
+        text = ''
+        for page in reader.pages:
+            text += page.extract_text() + '\n'
+    elif input_ext == "docx":
+        doc = Document(file_path)
+        text = '\n'.join([para.text for para in doc.paragraphs])
+    elif input_ext == "html":
+        with open(file_path, 'r') as f:
+            soup = BeautifulSoup(f.read(), 'html.parser')
+            text = soup.get_text()
+    elif input_ext == "odt":
+        doc = ezodf.opendoc(file_path)
+        text = '\n'.join(obj.text or '' for obj in doc.body if obj.kind == 'Paragraph')
+    elif input_ext == "rtf":
+        raise ValueError("RTF input not supported without envelope")
     else:
-        subprocess.run(["pandoc", file_path, "-o", new_file_path], check=True)
+        raise ValueError("Unsupported input format")
+
+    if target in ["TXT", "MD"]:
+        with open(new_file_path, 'w') as f:
+            f.write(text)
+    elif target == "DOCX":
+        doc = Document()
+        for para_text in text.split('\n'):
+            doc.add_paragraph(para_text)
+        doc.save(new_file_path)
+    elif target == "HTML":
+        with open(new_file_path, 'w') as f:
+            escaped_text = text.replace('<', '&lt;').replace('>', '&gt;')
+            f.write(f"<html><body><pre>{escaped_text}</pre></body></html>")
+    elif target == "ODT":
+        doc = ezodf.newdoc(doctype='odt', filename=new_file_path)
+        for para_text in text.split('\n'):
+            doc.body.append(ezodf.Paragraph(para_text))
+        doc.save()
+    elif target == "RTF":
+        raise ValueError("RTF output not supported without envelope")
+    else:
+        raise ValueError("Unsupported target format")
     return new_file_path
 
 def convert_presentations(file_path, target):
     input_ext = os.path.splitext(file_path)[1].lower()[1:]
     new_file_path = os.path.splitext(file_path)[0] + '.' + target.lower()
+    if ENVELOPE_SUPPORT:
+        try:
+            converter = Converter()
+            converter.convert(file_path, new_file_path)
+            return new_file_path
+        except Exception as e:
+            print(f"Envelope conversion failed: {e}. Falling back to manual conversion.")
+    # Fallback to original
     text = ""
     if input_ext == "pptx":
         pres = Presentation(file_path)
@@ -407,6 +415,14 @@ def convert_archive(file_path, target):
 def convert_spreadsheets(file_path, target):
     input_ext = os.path.splitext(file_path)[1].lower()[1:]
     new_file_path = os.path.splitext(file_path)[0] + '.' + target.lower()
+    if ENVELOPE_SUPPORT:
+        try:
+            converter = Converter()
+            converter.convert(file_path, new_file_path)
+            return new_file_path
+        except Exception as e:
+            print(f"Envelope conversion failed: {e}. Falling back to manual conversion.")
+    # Fallback to original
     data = []
     if input_ext == "xlsx":
         wb = openpyxl.load_workbook(file_path)
@@ -774,7 +790,7 @@ def open_docs_window(master, preselected_file=None):
     file_path_var = ctk.StringVar(value="")
 
     base_filetypes = "*.txt;*.pdf;*.docx;*.html;*.md;*.odt"
-    if has_pandoc or RTF_SUPPORT:
+    if ENVELOPE_SUPPORT:
         base_filetypes += ";*.rtf"
     filetypes = [("Docs files", base_filetypes)]
 
@@ -792,7 +808,7 @@ def open_docs_window(master, preselected_file=None):
 
     target_var = ctk.StringVar(value="TXT")
     combo_values = ["TXT", "DOCX", "HTML", "MD", "ODT"]
-    if has_pandoc:
+    if ENVELOPE_SUPPORT:
         combo_values.append("RTF")
     combo = ctk.CTkComboBox(docs_win, values=combo_values, variable=target_var, font=(FONT_FAMILY_REGULAR, 10), width=250)
     combo.pack(pady=5)
@@ -820,7 +836,7 @@ def open_docs_window(master, preselected_file=None):
                 new_file_path = convert_docs(fp, target)
                 docs_win.after(0, lambda: messagebox.showinfo("Success", f"File converted to: {new_file_path}"))
             except FileNotFoundError:
-                docs_win.after(0, lambda: messagebox.showerror("Error", "Pandoc not found. Please install Pandoc for full formatting support."))
+                docs_win.after(0, lambda: messagebox.showerror("Error", "Envelope requires LibreOffice. Please install LibreOffice."))
             except Exception as e:
                 docs_win.after(0, lambda e=e: messagebox.showerror("Error", f"Conversion failed: {str(e)}"))
             finally:
