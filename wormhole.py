@@ -96,7 +96,7 @@ FONT_FILES = [
     "PathwayExtreme_36pt-Thin.ttf"
 ]
 
-VERSION = "1.2.4"
+VERSION = "1.2.5"
 GITHUB_URL = "https://github.com/DirectedHunt42/Wormhole"
 
 # Set up customtkinter
@@ -659,40 +659,44 @@ class WormholeApp(ctk.CTk):
             except Exception as e:
                 print(f"Could not set application icon: {e}")
                 
+        # Create a scrollable frame to hold all content
+        scrollable_frame = ctk.CTkScrollableFrame(self, fg_color=BG)
+        scrollable_frame.pack(fill='both', expand=True)
+
         # Custom label for instructions
         image = ctk.CTkImage(light_image=WORMHOLE_PIL_IMAGE, dark_image=WORMHOLE_PIL_IMAGE, size=(306, 204))
-        img_label = ctk.CTkLabel(self, image=image, text="", fg_color=BG)
+        img_label = ctk.CTkLabel(scrollable_frame, image=image, text="", fg_color=BG)
         img_label.pack(pady=10)
 
-        label = ctk.CTkLabel(self, text="Select a file type category:", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 12))
+        label = ctk.CTkLabel(scrollable_frame, text="Select a file type category:", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 12))
         label.pack(pady=20)
 
         # Buttons for each category (using semibold for buttons if desired; otherwise keep normal)
-        btn_docs = ctk.CTkButton(self, text="Docs", command=self.open_docs_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
+        btn_docs = ctk.CTkButton(scrollable_frame, text="Docs", command=self.open_docs_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_docs.pack(pady=5)
 
-        btn_presentations = ctk.CTkButton(self, text="Presentations", command=self.open_presentations_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
+        btn_presentations = ctk.CTkButton(scrollable_frame, text="Presentations", command=self.open_presentations_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_presentations.pack(pady=5)
 
-        btn_images = ctk.CTkButton(self, text="Images", command=self.open_images_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
+        btn_images = ctk.CTkButton(scrollable_frame, text="Images", command=self.open_images_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_images.pack(pady=5)
 
-        btn_archive = ctk.CTkButton(self, text="Archive", command=self.open_archive_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
+        btn_archive = ctk.CTkButton(scrollable_frame, text="Archive", command=self.open_archive_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_archive.pack(pady=5)
 
-        btn_spreadsheets = ctk.CTkButton(self, text="Spreadsheets", command=self.open_spreadsheets_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
+        btn_spreadsheets = ctk.CTkButton(scrollable_frame, text="Spreadsheets", command=self.open_spreadsheets_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_spreadsheets.pack(pady=5)
 
-        btn_3d = ctk.CTkButton(self, text="3D Models", command=self.open_3d_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
+        btn_3d = ctk.CTkButton(scrollable_frame, text="3D Models", command=self.open_3d_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_3d.pack(pady=5)
 
-        btn_media = ctk.CTkButton(self, text="Media", command=self.open_media_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
+        btn_media = ctk.CTkButton(scrollable_frame, text="Media", command=self.open_media_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_media.pack(pady=5)
 
-        about_label = ctk.CTkLabel(self, text=f"Wormhole File Converter\nVersion {VERSION}\n© 2025-2026 Nova Foundry", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
+        about_label = ctk.CTkLabel(scrollable_frame, text=f"Wormhole File Converter\nVersion {VERSION}\n© 2025-2026 Nova Foundry", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
         about_label.pack(pady=20)
 
-        links_frame = ctk.CTkFrame(self, fg_color=BG)
+        links_frame = ctk.CTkFrame(scrollable_frame, fg_color=BG)
 
         support_link = ctk.CTkLabel(
             links_frame, text="Support Nova Foundry",
@@ -724,6 +728,9 @@ class WormholeApp(ctk.CTk):
         support_link.bind("<Button-1>", open_support_link)
         official_link.bind("<Button-1>", open_official_link)
         help_link.bind("<Button-1>", open_help_link)
+
+        # Hide the scrollbar permanently
+        scrollable_frame._scrollbar.grid_forget()
 
     def check_for_updates(self):
         try:
