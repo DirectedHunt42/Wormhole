@@ -23,6 +23,7 @@ REM Add data for bundled resources
 set "DATA_1=%SCRIPT_DIR%\Icons;Icons"
 set "DATA_2=%SCRIPT_DIR%\fonts;fonts"
 set "DATA_3=%SCRIPT_DIR%\envelope;envelope"
+set "DATA_4=%SCRIPT_DIR%\LICENSE.txt;LICENSE.txt"
 REM ===================================================================
 REM ================== SCRIPT EXECUTION (No Need to Edit) =============
 REM ===================================================================
@@ -143,6 +144,7 @@ if /I "%COMPILE_WORMHOLE%" == "YES" (
         --add-data "%DATA_1%" ^
         --add-data "%DATA_2%" ^
         --add-data "%DATA_3%" ^
+        --add-data "%DATA_4%" ^
         --distpath "%OUTPUT_DIR%" ^
         --workpath "%LOG_DIR%\build\%WORMHOLE_BUILD_NAME%" ^
         --specpath "%LOG_DIR%" ^

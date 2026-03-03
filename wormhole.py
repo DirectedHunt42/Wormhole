@@ -1025,17 +1025,52 @@ class WormholeApp(ctk.CTk):
         official_link.bind("<Button-1>", open_official_link)
         help_link.bind("<Button-1>", open_help_link)
 
-        # License
-        license_path = resource_path("LICENSE.txt")
-        if os.path.exists(license_path):
-            with open(license_path, 'r', encoding='utf-8-sig') as f:
-                license_text = f.read().strip()
-        else:
-            license_text = "LICENSE.txt not found."
-        textbox = ctk.CTkTextbox(about_win, width=300, height=200)
-        textbox.insert("0.0", license_text)
-        textbox.configure(state="disabled")
-        textbox.pack(pady=10)
+        # License (always show box; catch any errors so UI doesn't abort)
+        try:
+            # always resolve path relative to the executable's folder
+            exe_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(__file__)
+            license_path = os.path.join(exe_dir, "LICENSE.txt")
+            print(f"[DEBUG] about dialog looking for license at {license_path}")
+            if os.path.exists(license_path):
+                try:
+                    with open(license_path, 'r', encoding='utf-8-sig') as f:
+                        license_text = f.read().strip()
+                except PermissionError as pe:
+                    # copy-out workaround
+                    tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.txt')
+                    tmp.close()
+                    try:
+                        shutil.copy2(license_path, tmp.name)
+                        with open(tmp.name, 'r', encoding='utf-8-sig') as f2:
+                            license_text = f2.read().strip()
+                    finally:
+                        try:
+                            os.unlink(tmp.name)
+                        except Exception:
+                            pass
+            else:
+                license_text = "LICENSE.txt not found."
+        except Exception as e:
+            license_text = f"Error loading license: {e}"
+            print(f"[ERROR] could not load license text: {e}")
+            try:
+                messagebox.showwarning("About", f"Failed to load LICENSE.txt:\n{e}")
+            except Exception:
+                pass
+        try:
+            textbox = ctk.CTkTextbox(about_win, width=300, height=200)
+            textbox.insert("0.0", license_text)
+            textbox.configure(state="disabled")
+            textbox.pack(pady=10)
+        except Exception as e:
+            print(f"[ERROR] failed to create license textbox: {e}")
+            try:
+                messagebox.showwarning("About", f"Could not display license text box:\n{e}")
+            except Exception:
+                pass
+            # fallback: show error label instead
+            label_err = ctk.CTkLabel(about_win, text=f"License box error: {e}", fg_color=BG, text_color=TEXT)
+            label_err.pack(pady=10)
 
     def check_for_updates(self):
         try:
