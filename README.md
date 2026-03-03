@@ -40,12 +40,23 @@ Built with a clean UI and simple workflow, Wormhole helps you convert documents,
 ### Features
 
 - 🔄 **Multi-Format Conversion** — Convert between a wide variety of file types.
+- 📦 **Browser‑grade document parsing** — Optional JavaScript backend via [Envelope](https://github.com/p2r3/envelope) for DOCX/ODT/PPTX/XLSX/ODS/ODP that preserves formatting and images. Requires Node.js; toggleable in About > Use Envelope.
 - ⚡ **Fast & Lightweight** — Optimized for quick conversions without bloat.
-- 🗒️ **Windows Context Menu Option** — Adds option to convert with wormhole to windows context menu for fast file conversion directly from explorer.
+- 🗒️ **Windows Context Menu Option** — Adds option to convert with wormhole to Windows context menu for fast file conversion directly from Explorer.
 
 <div>
-  <a href="https://info.flagcounter.com/ZFn0"><img src="https://s01.flagcounter.com/count2/ZFn0/bg_0B0F1A/txt_FFFFFF/border_FFFFFF/columns_4/maxflags_20/viewers_0/labels_0/pageviews_1/flags_0/percent_1/" alt="Flag Counter" border="0"></a>
+  <a href="https://info.flagcounter.com/ZFn0"><img src="https://s01.flagcounter.com/count2/ZFn0/bg_0B0F1A/txt_FFFFFF/border_FFFFFF/columns_4/maxflags_20/viewers_0/labels_0/pageviews_1/flags_0/percent_1/" alt="Flag Counter" border="0"/></a>
 </div>
+
+---
+
+## Development notes
+
+<p align="center">
+  <img src="Icons/p2r3.png" height="100" alt="Envelope logo" />
+</p>
+
+- Third‑party JS parsers are stored under `envelope/` and bundled with the application. This code is sourced from the [p2r3/envelope](https://github.com/p2r3/envelope) repository and executed via Node.js when the "Use Envelope" option is enabled.
 
 ---
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-NovaFoundry-6f4e37?style=for-the-badge&logo=buymeacoffee&logoColor=white)](https://buymeacoffee.com/novafoundry)
