@@ -93,16 +93,42 @@ def envelope_html_for_file(file_path):
     """
     if not ENVELOPE_JS_SUPPORT:
         raise RuntimeError("Envelope JS support is not available")
+    
     temp_dir = tempfile.mkdtemp()
     try:
-        script = resource_path(os.path.join("envelope", "test", "test.js"))
+        # Use absolute paths to ensure Node can resolve everything correctly
+        script = os.path.abspath(resource_path(os.path.join("envelope", "test", "test.js")))
         abs_path = os.path.abspath(file_path)
-        subprocess.check_call(["node", script, abs_path], cwd=temp_dir)
+        
+        # Run node with the full path to test.js
+        result = subprocess.run(
+            ["node", script, abs_path],
+            cwd=temp_dir,
+            capture_output=True,
+            text=True
+        )
+        
+        # Print debug info to stderr (visible during conversion)
+        if result.stderr:
+            print(result.stderr, file=sys.stderr)
+        
+        if result.returncode != 0:
+            raise RuntimeError(f"Envelope parser failed: {result.stderr}")
+        
         out_file = os.path.join(temp_dir, "output.html")
+        if not os.path.exists(out_file):
+            raise RuntimeError(f"Envelope parser did not produce output.html")
+        
         with open(out_file, "r", encoding="utf-8") as f:
-            return f.read()
+            html = f.read()
+        
+        if not html.strip():
+            raise RuntimeError(f"Envelope parser produced empty output")
+        
+        return html
     finally:
-        shutil.rmtree(temp_dir)
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
 
 
 def html_table_to_data(html):
@@ -267,22 +293,47 @@ def convert_docs(file_path, target):
     new_file_path = os.path.splitext(file_path)[0] + '.' + target.lower()
 
     # try envelope JS first if enabled/available and applicable
-    text = None
     if SETTINGS.get('use_envelope') and ENVELOPE_JS_SUPPORT and input_ext in ["docx", "odt"]:
         print("Attempting conversion with Envelope JS (Node) (user enabled)...")
         try:
             html = envelope_html_for_file(file_path)
             if target == "HTML":
+                # Ensure proper HTML structure
+                if not html.strip().startswith("<!DOCTYPE") and not html.strip().startswith("<html"):
+                    html = f"<!DOCTYPE html><html><head><meta charset='utf-8'></head><body>{html}</body></html>"
                 with open(new_file_path, 'w', encoding='utf-8') as f:
                     f.write(html)
                 return new_file_path
-            # convert html to plain text for downstream processing
+            
+            # For other targets, use pandoc to convert envelope HTML (preserves images/formatting)
+            has_pandoc = shutil.which("pandoc") is not None
+            if has_pandoc and target in ["DOCX", "ODT"]:
+                # Wrap HTML if not already a proper document
+                if not html.strip().startswith("<!DOCTYPE") and not html.strip().startswith("<html"):
+                    html = f"<!DOCTYPE html><html><head><meta charset='utf-8'></head><body>{html}</body></html>"
+                
+                temp_html = tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8')
+                try:
+                    temp_html.write(html)
+                    temp_html.close()
+                    ext = target.lower()
+                    cmd = ['pandoc', temp_html.name, '-o', new_file_path, '-f', 'html', '-t', ext]
+                    subprocess.check_call(cmd)
+                    print("Envelope+Pandoc conversion successful (with formatting/images).")
+                    return new_file_path
+                finally:
+                    os.unlink(temp_html.name)
+            
+            # Fallback: extract text if pandoc not available or unsupported target
             text = BeautifulSoup(html, 'html.parser').get_text()
-            print("Envelope JS conversion successful (text extracted).")
+            print("Envelope JS conversion successful (text-only fallback).")
         except Exception as e:
             print(f"Envelope JS conversion failed: {e}")
+            text = None
+    else:
+        text = None
 
-    # if envelope didn't produce text, fall back to LibreOffice or manual logic
+    # if envelope didn't produce output, fall back to LibreOffice or manual logic
     if text is None:
         if ENVELOPE_SUPPORT:
             print("Attempting conversion with LibreOffice...")
@@ -353,6 +404,7 @@ def convert_presentations(file_path, target):
     input_ext = os.path.splitext(file_path)[1].lower()[1:]
     new_file_path = os.path.splitext(file_path)[0] + '.' + target.lower()
     text = None
+    html = None
 
     # envelope JS attempt for improving HTML/text output (only if user enabled)
     if SETTINGS.get('use_envelope') and ENVELOPE_JS_SUPPORT and input_ext in ["pptx", "odp"]:
@@ -360,11 +412,33 @@ def convert_presentations(file_path, target):
         try:
             html = envelope_html_for_file(file_path)
             if target == "HTML":
+                # Ensure proper HTML structure
+                if not html.strip().startswith("<!DOCTYPE") and not html.strip().startswith("<html"):
+                    html = f"<!DOCTYPE html><html><head><meta charset='utf-8'></head><body>{html}</body></html>"
                 with open(new_file_path, 'w', encoding='utf-8') as f:
                     f.write(html)
                 return new_file_path
+            # Use pandoc to convert envelope HTML to other formats (preserves images/formatting)
+            has_pandoc = shutil.which("pandoc") is not None
+            if has_pandoc and target in ["DOCX", "PDF"]:
+                # Wrap HTML if not already a proper document
+                if not html.strip().startswith("<!DOCTYPE") and not html.strip().startswith("<html"):
+                    html = f"<!DOCTYPE html><html><head><meta charset='utf-8'></head><body>{html}</body></html>"
+                
+                temp_html = tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8')
+                try:
+                    temp_html.write(html)
+                    temp_html.close()
+                    ext = target.lower()
+                    cmd = ['pandoc', temp_html.name, '-o', new_file_path, '-f', 'html', '-t', ext]
+                    subprocess.check_call(cmd)
+                    print("Envelope+Pandoc conversion successful (with formatting/images).")
+                    return new_file_path
+                finally:
+                    os.unlink(temp_html.name)
+            # Fallback: extract text only
             text = BeautifulSoup(html, 'html.parser').get_text()
-            print("Envelope JS conversion successful (text extracted).")
+            print("Envelope JS conversion successful (text-only fallback).")
         except Exception as e:
             print(f"Envelope JS conversion failed: {e}")
 
@@ -547,12 +621,31 @@ def convert_spreadsheets(file_path, target):
     input_ext = os.path.splitext(file_path)[1].lower()[1:]
     new_file_path = os.path.splitext(file_path)[0] + '.' + target.lower()
     data = None
+    html = None
 
     # try envelope JS to get table data for xlsx/ods (if user enabled)
     if SETTINGS.get('use_envelope') and ENVELOPE_JS_SUPPORT and input_ext in ["xlsx", "ods"]:
-        print("Attempting spreadsheet parsing with Envelope JS (Node) (user enabled)...")
+        print("Attempting spreadsheet conversion with Envelope JS (Node) (user enabled)...")
         try:
             html = envelope_html_for_file(file_path)
+            # For CSV target, use pandoc to preserve table formatting
+            has_pandoc = shutil.which("pandoc") is not None
+            if has_pandoc and target == "CSV":
+                # Wrap HTML if not already a proper document
+                if not html.strip().startswith("<!DOCTYPE") and not html.strip().startswith("<html"):
+                    html = f"<!DOCTYPE html><html><head><meta charset='utf-8'></head><body>{html}</body></html>"
+                
+                temp_html = tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8')
+                try:
+                    temp_html.write(html)
+                    temp_html.close()
+                    cmd = ['pandoc', temp_html.name, '-o', new_file_path, '-f', 'html', '-t', 'csv']
+                    subprocess.check_call(cmd)
+                    print("Envelope+Pandoc conversion successful (preserving table structure).")
+                    return new_file_path
+                finally:
+                    os.unlink(temp_html.name)
+            # Otherwise extract table data
             data = html_table_to_data(html)
             print("Envelope JS conversion successful (table data extracted).")
         except Exception as e:
