@@ -38,6 +38,84 @@ except ImportError:
 has_libreoffice = shutil.which("soffice") is not None or shutil.which("libreoffice") is not None
 ENVELOPE_SUPPORT = has_libreoffice
 
+# ---------- settings handling ----------
+
+LOCAL_APPDATA = os.environ.get('LOCALAPPDATA') or os.path.expanduser('~')
+SETTINGS_DIR = os.path.join(LOCAL_APPDATA, "NovaFoundry_wormhole")
+SETTINGS_FILE = os.path.join(SETTINGS_DIR, "settings.json")
+
+DEFAULT_SETTINGS = {
+    "use_envelope": False
+}
+
+
+def load_settings():
+    try:
+        os.makedirs(SETTINGS_DIR, exist_ok=True)
+        if os.path.exists(SETTINGS_FILE):
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"Failed to load settings: {e}")
+    return DEFAULT_SETTINGS.copy()
+
+
+def save_settings(settings):
+    try:
+        os.makedirs(SETTINGS_DIR, exist_ok=True)
+        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(settings, f, indent=2)
+    except Exception as e:
+        print(f"Failed to save settings: {e}")
+
+# initial load
+SETTINGS = load_settings()
+
+# Check for Node.js and envelope JavaScript parser
+has_node = shutil.which("node") is not None or shutil.which("node.exe") is not None
+# envelope folder may be bundled; we just need the directory name (relative to this file)
+envelope_dir = os.path.join(os.path.dirname(__file__), "envelope")
+ENVELOPE_JS_SUPPORT = has_node and os.path.isdir(envelope_dir)
+
+if ENVELOPE_JS_SUPPORT:
+    print("Envelope JS support enabled (Node.js detected and envelope sources available)")
+elif has_node:
+    print("Node.js present but envelope folder not found; JS parsing disabled")
+
+# helper used by several conversion functions
+
+def envelope_html_for_file(file_path):
+    """Run the Envelope JS parser via Node and return resulting HTML string.
+
+    A temporary working directory is created so that the built-in test
+    harness in `envelope/test/test.js` can write its output file without
+    interfering with the rest of the repository.
+    """
+    if not ENVELOPE_JS_SUPPORT:
+        raise RuntimeError("Envelope JS support is not available")
+    temp_dir = tempfile.mkdtemp()
+    try:
+        script = resource_path(os.path.join("envelope", "test", "test.js"))
+        abs_path = os.path.abspath(file_path)
+        subprocess.check_call(["node", script, abs_path], cwd=temp_dir)
+        out_file = os.path.join(temp_dir, "output.html")
+        with open(out_file, "r", encoding="utf-8") as f:
+            return f.read()
+    finally:
+        shutil.rmtree(temp_dir)
+
+
+def html_table_to_data(html):
+    """Parse an HTML string containing <table> markup and return a list of
+    rows (each row is a list of cell text values)."""
+    soup = BeautifulSoup(html, "html.parser")
+    rows = []
+    for tr in soup.find_all("tr"):
+        cells = [td.get_text() for td in tr.find_all(["td", "th"])]
+        rows.append(cells)
+    return rows
+
+
 if (darkdetect.theme() == "Light"):
     BG = "#f7f8ff"
     CARD = "#ffffff"
@@ -187,49 +265,69 @@ def get_category(file_path):
 def convert_docs(file_path, target):
     input_ext = os.path.splitext(file_path)[1].lower()[1:]
     new_file_path = os.path.splitext(file_path)[0] + '.' + target.lower()
-    if ENVELOPE_SUPPORT:
-        print("Attempting conversion with LibreOffice...")
-        try:
-            ext = target.lower()
-            out_dir = os.path.dirname(new_file_path)
-            cmd = ['soffice', '--headless', '--convert-to', ext, file_path, '--outdir', out_dir]
-            subprocess.check_call(cmd)
-            produced = os.path.join(out_dir, os.path.splitext(os.path.basename(file_path))[0] + '.' + ext)
-            if produced != new_file_path:
-                os.rename(produced, new_file_path)
-            print("LibreOffice conversion successful.")
-            return new_file_path
-        except Exception as e:
-            print(f"LibreOffice conversion failed: {e}. Falling back to manual conversion.")
-    else:
-        print("LibreOffice not supported. Falling back to manual conversion.")
-    # Fallback to original manual conversion
-    text = ""
-    if input_ext in ["txt", "md"]:
-        with open(file_path, 'r') as f:
-            text = f.read()
-    elif input_ext == "pdf":
-        reader = PdfReader(file_path)
-        text = ''
-        for page in reader.pages:
-            text += page.extract_text() + '\n'
-    elif input_ext == "docx":
-        doc = Document(file_path)
-        text = '\n'.join([para.text for para in doc.paragraphs])
-    elif input_ext == "html":
-        with open(file_path, 'r') as f:
-            soup = BeautifulSoup(f.read(), 'html.parser')
-            text = soup.get_text()
-    elif input_ext == "odt":
-        doc = ezodf.opendoc(file_path)
-        text = '\n'.join(obj.text or '' for obj in doc.body if obj.kind == 'Paragraph')
-    elif input_ext == "rtf":
-        raise ValueError("RTF input not supported without LibreOffice")
-    else:
-        raise ValueError("Unsupported input format")
 
+    # try envelope JS first if enabled/available and applicable
+    text = None
+    if SETTINGS.get('use_envelope') and ENVELOPE_JS_SUPPORT and input_ext in ["docx", "odt"]:
+        print("Attempting conversion with Envelope JS (Node) (user enabled)...")
+        try:
+            html = envelope_html_for_file(file_path)
+            if target == "HTML":
+                with open(new_file_path, 'w', encoding='utf-8') as f:
+                    f.write(html)
+                return new_file_path
+            # convert html to plain text for downstream processing
+            text = BeautifulSoup(html, 'html.parser').get_text()
+            print("Envelope JS conversion successful (text extracted).")
+        except Exception as e:
+            print(f"Envelope JS conversion failed: {e}")
+
+    # if envelope didn't produce text, fall back to LibreOffice or manual logic
+    if text is None:
+        if ENVELOPE_SUPPORT:
+            print("Attempting conversion with LibreOffice...")
+            try:
+                ext = target.lower()
+                out_dir = os.path.dirname(new_file_path)
+                cmd = ['soffice', '--headless', '--convert-to', ext, file_path, '--outdir', out_dir]
+                subprocess.check_call(cmd)
+                produced = os.path.join(out_dir, os.path.splitext(os.path.basename(file_path))[0] + '.' + ext)
+                if produced != new_file_path:
+                    os.rename(produced, new_file_path)
+                print("LibreOffice conversion successful.")
+                return new_file_path
+            except Exception as e:
+                print(f"LibreOffice conversion failed: {e}. Falling back to manual conversion.")
+        else:
+            print("LibreOffice not supported. Falling back to manual conversion.")
+
+        # manual extraction to plain text
+        if input_ext in ["txt", "md"]:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                text = f.read()
+        elif input_ext == "pdf":
+            reader = PdfReader(file_path)
+            text = ''
+            for page in reader.pages:
+                text += page.extract_text() + '\n'
+        elif input_ext == "docx":
+            doc = Document(file_path)
+            text = '\n'.join([para.text for para in doc.paragraphs])
+        elif input_ext == "html":
+            with open(file_path, 'r', encoding='utf-8') as f:
+                soup = BeautifulSoup(f.read(), 'html.parser')
+                text = soup.get_text()
+        elif input_ext == "odt":
+            doc = ezodf.opendoc(file_path)
+            text = '\n'.join(obj.text or '' for obj in doc.body if obj.kind == 'Paragraph')
+        elif input_ext == "rtf":
+            raise ValueError("RTF input not supported without LibreOffice")
+        else:
+            raise ValueError("Unsupported input format")
+
+    # at this point we have `text` for non-HTML targets
     if target in ["TXT", "MD"]:
-        with open(new_file_path, 'w') as f:
+        with open(new_file_path, 'w', encoding='utf-8') as f:
             f.write(text)
     elif target == "DOCX":
         doc = Document()
@@ -237,7 +335,7 @@ def convert_docs(file_path, target):
             doc.add_paragraph(para_text)
         doc.save(new_file_path)
     elif target == "HTML":
-        with open(new_file_path, 'w') as f:
+        with open(new_file_path, 'w', encoding='utf-8') as f:
             escaped_text = text.replace('<', '&lt;').replace('>', '&gt;')
             f.write(f"<html><body><pre>{escaped_text}</pre></body></html>")
     elif target == "ODT":
@@ -254,42 +352,60 @@ def convert_docs(file_path, target):
 def convert_presentations(file_path, target):
     input_ext = os.path.splitext(file_path)[1].lower()[1:]
     new_file_path = os.path.splitext(file_path)[0] + '.' + target.lower()
-    if ENVELOPE_SUPPORT:
-        print("Attempting conversion with LibreOffice...")
-        try:
-            ext = target.lower()
-            out_dir = os.path.dirname(new_file_path)
-            cmd = ['soffice', '--headless', '--convert-to', ext, file_path, '--outdir', out_dir]
-            subprocess.check_call(cmd)
-            produced = os.path.join(out_dir, os.path.splitext(os.path.basename(file_path))[0] + '.' + ext)
-            if produced != new_file_path:
-                os.rename(produced, new_file_path)
-            print("LibreOffice conversion successful.")
-            return new_file_path
-        except Exception as e:
-            print(f"LibreOffice conversion failed: {e}. Falling back to manual conversion.")
-    else:
-        print("LibreOffice not supported. Falling back to manual conversion.")
-    # Fallback to original
-    text = ""
-    if input_ext == "pptx":
-        pres = Presentation(file_path)
-        text = ''
-        for slide in pres.slides:
-            for shape in slide.shapes:
-                if shape.has_text_frame:
-                    for paragraph in shape.text_frame.paragraphs:
-                        for run in paragraph.runs:
-                            text += run.text
-                        text += '\n'
-    elif input_ext == "odp":
-        doc = ezodf.opendoc(file_path)
-        text = '\n'.join(obj.text or '' for obj in doc.body if obj.kind == 'Paragraph')
-    else:
-        raise ValueError("Unsupported input format")
+    text = None
 
+    # envelope JS attempt for improving HTML/text output (only if user enabled)
+    if SETTINGS.get('use_envelope') and ENVELOPE_JS_SUPPORT and input_ext in ["pptx", "odp"]:
+        print("Attempting presentation conversion with Envelope JS (Node) (user enabled)...")
+        try:
+            html = envelope_html_for_file(file_path)
+            if target == "HTML":
+                with open(new_file_path, 'w', encoding='utf-8') as f:
+                    f.write(html)
+                return new_file_path
+            text = BeautifulSoup(html, 'html.parser').get_text()
+            print("Envelope JS conversion successful (text extracted).")
+        except Exception as e:
+            print(f"Envelope JS conversion failed: {e}")
+
+    if text is None:
+        if ENVELOPE_SUPPORT:
+            print("Attempting conversion with LibreOffice...")
+            try:
+                ext = target.lower()
+                out_dir = os.path.dirname(new_file_path)
+                cmd = ['soffice', '--headless', '--convert-to', ext, file_path, '--outdir', out_dir]
+                subprocess.check_call(cmd)
+                produced = os.path.join(out_dir, os.path.splitext(os.path.basename(file_path))[0] + '.' + ext)
+                if produced != new_file_path:
+                    os.rename(produced, new_file_path)
+                print("LibreOffice conversion successful.")
+                return new_file_path
+            except Exception as e:
+                print(f"LibreOffice conversion failed: {e}. Falling back to manual conversion.")
+        else:
+            print("LibreOffice not supported. Falling back to manual conversion.")
+
+        # manual extraction to text
+        if input_ext == "pptx":
+            pres = Presentation(file_path)
+            text = ''
+            for slide in pres.slides:
+                for shape in slide.shapes:
+                    if shape.has_text_frame:
+                        for paragraph in shape.text_frame.paragraphs:
+                            for run in paragraph.runs:
+                                text += run.text
+                            text += '\n'
+        elif input_ext == "odp":
+            doc = ezodf.opendoc(file_path)
+            text = '\n'.join(obj.text or '' for obj in doc.body if obj.kind == 'Paragraph')
+        else:
+            raise ValueError("Unsupported input format")
+
+    # now convert the (possibly extracted) text to the desired target
     if target == "TXT":
-        with open(new_file_path, 'w') as f:
+        with open(new_file_path, 'w', encoding='utf-8') as f:
             f.write(text)
     elif target == "PDF":
         c = canvas.Canvas(new_file_path, pagesize=letter)
@@ -430,39 +546,54 @@ def convert_archive(file_path, target):
 def convert_spreadsheets(file_path, target):
     input_ext = os.path.splitext(file_path)[1].lower()[1:]
     new_file_path = os.path.splitext(file_path)[0] + '.' + target.lower()
-    if ENVELOPE_SUPPORT:
-        print("Attempting conversion with LibreOffice...")
-        try:
-            ext = target.lower()
-            out_dir = os.path.dirname(new_file_path)
-            cmd = ['soffice', '--headless', '--convert-to', ext, file_path, '--outdir', out_dir]
-            subprocess.check_call(cmd)
-            produced = os.path.join(out_dir, os.path.splitext(os.path.basename(file_path))[0] + '.' + ext)
-            if produced != new_file_path:
-                os.rename(produced, new_file_path)
-            print("LibreOffice conversion successful.")
-            return new_file_path
-        except Exception as e:
-            print(f"LibreOffice conversion failed: {e}. Falling back to manual conversion.")
-    else:
-        print("LibreOffice not supported. Falling back to manual conversion.")
-    # Fallback to original
-    data = []
-    if input_ext == "xlsx":
-        wb = openpyxl.load_workbook(file_path)
-        sheet = wb.active
-        data = [[cell.value or '' for cell in row] for row in sheet.rows]
-    elif input_ext == "csv":
-        with open(file_path, 'r', newline='') as f:
-            reader = csv.reader(f)
-            data = list(reader)
-    elif input_ext == "ods":
-        doc = ezodf.opendoc(file_path)
-        sheet = doc.sheets[0]
-        data = [[cell.value or '' for cell in row] for row in sheet.rows()]
-    else:
-        raise ValueError("Unsupported input format")
+    data = None
 
+    # try envelope JS to get table data for xlsx/ods (if user enabled)
+    if SETTINGS.get('use_envelope') and ENVELOPE_JS_SUPPORT and input_ext in ["xlsx", "ods"]:
+        print("Attempting spreadsheet parsing with Envelope JS (Node) (user enabled)...")
+        try:
+            html = envelope_html_for_file(file_path)
+            data = html_table_to_data(html)
+            print("Envelope JS conversion successful (table data extracted).")
+        except Exception as e:
+            print(f"Envelope JS conversion failed: {e}")
+
+    if data is None:
+        if ENVELOPE_SUPPORT:
+            print("Attempting conversion with LibreOffice...")
+            try:
+                ext = target.lower()
+                out_dir = os.path.dirname(new_file_path)
+                cmd = ['soffice', '--headless', '--convert-to', ext, file_path, '--outdir', out_dir]
+                subprocess.check_call(cmd)
+                produced = os.path.join(out_dir, os.path.splitext(os.path.basename(file_path))[0] + '.' + ext)
+                if produced != new_file_path:
+                    os.rename(produced, new_file_path)
+                print("LibreOffice conversion successful.")
+                return new_file_path
+            except Exception as e:
+                print(f"LibreOffice conversion failed: {e}. Falling back to manual conversion.")
+        else:
+            print("LibreOffice not supported. Falling back to manual conversion.")
+
+        # manual extraction to data list-of-lists
+        data = []
+        if input_ext == "xlsx":
+            wb = openpyxl.load_workbook(file_path)
+            sheet = wb.active
+            data = [[cell.value or '' for cell in row] for row in sheet.rows]
+        elif input_ext == "csv":
+            with open(file_path, 'r', newline='') as f:
+                reader = csv.reader(f)
+                data = list(reader)
+        elif input_ext == "ods":
+            doc = ezodf.opendoc(file_path)
+            sheet = doc.sheets[0]
+            data = [[cell.value or '' for cell in row] for row in sheet.rows()]
+        else:
+            raise ValueError("Unsupported input format")
+
+    # now convert `data` into requested target
     if target == "XLSX":
         wb = openpyxl.Workbook()
         sheet = wb.active
@@ -691,11 +822,11 @@ class WormholeApp(ctk.CTk):
         label.pack(pady=20)
 
         # Buttons for each category (using semibold for buttons if desired; otherwise keep normal)
-        docs_text = "Docs 📨" if ENVELOPE_SUPPORT else "Docs"
+        docs_text = "Docs 📨" if (ENVELOPE_SUPPORT or (ENVELOPE_JS_SUPPORT and SETTINGS.get('use_envelope'))) else "Docs"
         btn_docs = ctk.CTkButton(self, text=docs_text, command=self.open_docs_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_docs.pack(pady=5)
 
-        presentations_text = "Presentations 📨" if ENVELOPE_SUPPORT else "Presentations"
+        presentations_text = "Presentations 📨" if (ENVELOPE_SUPPORT or (ENVELOPE_JS_SUPPORT and SETTINGS.get('use_envelope'))) else "Presentations"
         btn_presentations = ctk.CTkButton(self, text=presentations_text, command=self.open_presentations_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_presentations.pack(pady=5)
 
@@ -705,7 +836,7 @@ class WormholeApp(ctk.CTk):
         btn_archive = ctk.CTkButton(self, text="Archive", command=self.open_archive_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_archive.pack(pady=5)
 
-        spreadsheets_text = "Spreadsheets 📨" if ENVELOPE_SUPPORT else "Spreadsheets"
+        spreadsheets_text = "Spreadsheets 📨" if (ENVELOPE_SUPPORT or (ENVELOPE_JS_SUPPORT and SETTINGS.get('use_envelope'))) else "Spreadsheets"
         btn_spreadsheets = ctk.CTkButton(self, text=spreadsheets_text, command=self.open_spreadsheets_window, fg_color=ACCENT, text_color=BG, hover_color=ACCENT_DIM, corner_radius=20, width=300, font=(FONT_FAMILY_SEMIBOLD, 20))
         btn_spreadsheets.pack(pady=5)
 
@@ -716,7 +847,7 @@ class WormholeApp(ctk.CTk):
         btn_media.pack(pady=5)
 
         btn_about = ctk.CTkButton(self, text="About", command=self.open_about, fg_color='#888', text_color=BG, hover_color='#666', corner_radius=20, width=100, font=(FONT_FAMILY_SEMIBOLD, 10))
-        btn_about.pack(pady=10)
+        btn_about.pack(pady=5)
 
     def open_about(self):
         about_win = ctk.CTkToplevel(self)
@@ -763,19 +894,24 @@ class WormholeApp(ctk.CTk):
         except Exception as e:
             print(f"Could not load about image 2: {e}")
 
-        label_version = ctk.CTkLabel(about_win, text=f"Version {VERSION}", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 16))
-        label_version.pack()
-
-        envelope_copyright = ctk.CTkLabel(about_win, text="Envelope © p2r3", font=(FONT_FAMILY_REGULAR, 10), text_color=ACCENT, fg_color=BG, cursor="hand2")
-        envelope_copyright.pack()
-        envelope_copyright.bind("<Button-1>", lambda e: webbrowser.open_new(ENVELOPE_REPO_URL))
-
-        nova_copyright = ctk.CTkLabel(about_win, text="© Nova Foundry", fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 10))
-        nova_copyright.pack()
+        # version and credits merged into a single block
+        info_text = f"Version {VERSION}\n© Nova Foundry    Envelope © p2r3"
+        label_version = ctk.CTkLabel(about_win, text=info_text, fg_color=BG, text_color=TEXT, font=(FONT_FAMILY_REGULAR, 14), justify="center")
+        label_version.pack(pady=(0,5))
 
         github_link = ctk.CTkLabel(about_win, text="Github Repo", font=(FONT_FAMILY_REGULAR, 10), text_color=ACCENT, fg_color=BG, cursor="hand2")
         github_link.pack()
         github_link.bind("<Button-1>", lambda e: webbrowser.open_new(GITHUB_URL))
+
+        # envelope toggle (moved from settings popup)
+        var = ctk.BooleanVar(value=SETTINGS.get('use_envelope', False))
+        chk = ctk.CTkCheckBox(about_win, text="Enable Envelope JS conversions", variable=var)
+        chk.pack(pady=10)
+        def _on_toggle():
+            SETTINGS['use_envelope'] = var.get()
+            save_settings(SETTINGS)
+            messagebox.showinfo("Settings", "Preferences saved. Restart the app for changes to take effect.")
+        var.trace_add('write', lambda *args: _on_toggle())
 
         links_frame = ctk.CTkFrame(about_win, fg_color=BG)
         support_link = ctk.CTkLabel(links_frame, text="Support Nova Foundry", font=(FONT_FAMILY_REGULAR, 10), text_color=ACCENT, fg_color=BG, cursor="hand2")

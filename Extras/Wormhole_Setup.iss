@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 ; Non-commercial use only
 #define MyAppName "Wormhole"
-#define MyAppVersion "1.2.5"
+#define MyAppVersion "1.3.0"
 #define MyAppPublisher "Nova Foundry"
 #define MyAppURL "novafoundry.ca/wormhole"
 #define MyAppExeName "wormhole.exe"
@@ -44,6 +44,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "forcepandoc"; Description: "Force reinstall Pandoc (even if already detected)"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 Name: "forcechoco"; Description: "Force reinstall Chocolatey (even if already detected)"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 Name: "forceffmpeg"; Description: "Force reinstall FFmpeg (even if already detected)"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+Name: "forcenode"; Description: "Force reinstall Node.js (even if already detected)"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 Name: "showdetails"; Description: "Show terminal windows for dependency installations"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 [Files]
 Source: "C:\Users\jackp\Downloads\Wormhole\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
@@ -61,6 +62,7 @@ Filename: "{app}\{#MyAppExeName}"; Parameters: "--unregister"; RunOnceId: "Unreg
 var
   InstalledPandoc: Boolean;
   InstalledFFmpeg: Boolean;
+  InstalledNode: Boolean;
 // Function to handle Pandoc installation
 function InstallPandoc(): String;
 var
@@ -330,14 +332,130 @@ begin
   InstalledFFmpeg := True; // Flag for restart
   Result := ''; // Success
 end;
+
+// *** NEW FUNCTION: Helper to install Node.js ***
+function InstallNode(): String;
+var
+  ResultCode: Integer;
+  ChocoExePath: String;
+  ChocoInstallResult: String;
+  LogPath: String;
+  NodeExePath: String;
+  ShowDetails: Boolean;
+begin
+  InstalledNode := False;
+  LogPath := ExpandConstant('{tmp}\node_install.log');
+  ShowDetails := IsTaskSelected('showdetails');
+
+  // 1. Check if Node.js is already installed via PATH, unless force
+  if (not IsTaskSelected('forcenode')) and Exec(ExpandConstant('{cmd}'), '/C node --version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
+  begin
+    Result := ''; // Already installed, success
+    Exit;
+  end;
+
+  // 2. Check if Chocolatey is installed
+  if not Exec(ExpandConstant('{cmd}'), '/C choco -v', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
+  begin
+    // Install Chocolatey if missing
+    ChocoInstallResult := InstallChocolatey();
+   
+    if ChocoInstallResult <> '' then
+    begin
+       Result := ChocoInstallResult;
+       Exit;
+    end;
+  end;
+
+  // 3. Choco is installed, install Node.js
+  WizardForm.StatusLabel.Caption := 'Installing Node.js via Chocolatey (this may take a moment)...';
+  WizardForm.ProgressGauge.Style := npbstMarquee;
+
+  try
+    // Try standard Chocolatey install path first
+    ChocoExePath := 'C:\ProgramData\chocolatey\bin\choco.exe';
+   
+    if FileExists(ChocoExePath) then
+    begin
+       // Use absolute path
+       if ShowDetails then
+       begin
+         if not Exec(ChocoExePath, 'install nodejs -y', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+         begin
+           Result := 'Failed to launch Chocolatey to install Node.js. Code: ' + IntToStr(ResultCode);
+           Exit;
+         end;
+       end
+       else
+       begin
+         if not Exec(ExpandConstant('{cmd}'), '/C "' + ChocoExePath + '" install nodejs -y > "' + LogPath + '" 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+         begin
+           Result := 'Failed to launch Chocolatey to install Node.js. Code: ' + IntToStr(ResultCode);
+           Exit;
+         end;
+       end;
+    end
+    else
+    begin
+       // Fallback to global PATH
+       if ShowDetails then
+       begin
+         if not Exec('choco.exe', 'install nodejs -y', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+         begin
+           Result := 'Failed to launch Chocolatey to install Node.js. Code: ' + IntToStr(ResultCode);
+           Exit;
+         end;
+       end
+       else
+       begin
+         if not Exec(ExpandConstant('{cmd}'), '/C choco install nodejs -y > "' + LogPath + '" 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+         begin
+           Result := 'Failed to launch Chocolatey to install Node.js. Code: ' + IntToStr(ResultCode);
+           Exit;
+         end;
+       end;
+    end;
+    if ResultCode <> 0 then
+    begin
+      Result := 'Chocolatey failed to install Node.js. Code: ' + IntToStr(ResultCode) + '. Check log at ' + LogPath + ' for details.';
+      Exit;
+    end;
+  finally
+    WizardForm.ProgressGauge.Style := npbstNormal;
+    WizardForm.StatusLabel.Caption := '';
+  end;
+
+  // 4. Verify installation
+  NodeExePath := 'C:\Program Files\nodejs\node.exe';
+  if not FileExists(NodeExePath) then
+  begin
+    NodeExePath := 'C:\Program Files (x86)\nodejs\node.exe';
+    if not FileExists(NodeExePath) then
+    begin
+      Result := 'Node.js installed but executable not found in expected paths. Check log at ' + LogPath;
+      Exit;
+    end;
+  end;
+
+  if not Exec(NodeExePath, '--version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
+  begin
+    Result := 'Node.js installed but --version failed. Code: ' + IntToStr(ResultCode);
+    Exit;
+  end;
+
+  InstalledNode := True; // Flag for restart
+  Result := ''; // Success
+end;
 // Main function called by Setup
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   PandocResult: String;
   FFmpegResult: String;
+  NodeResult: String;
 begin
   InstalledPandoc := False;
   InstalledFFmpeg := False;
+  InstalledNode := False;
  
   // First, check/install Pandoc
   PandocResult := InstallPandoc();
@@ -354,10 +472,18 @@ begin
     Result := FFmpegResult; // Return FFmpeg error
     Exit;
   end;
+
+  // Third, check/install Node.js (and Choco if needed)
+  NodeResult := InstallNode();
+  if NodeResult <> '' then
+  begin
+    Result := NodeResult; // Return Node error
+    Exit;
+  end;
  
-  // If either was freshly installed, request restart for PATH updates
-  if InstalledPandoc or InstalledFFmpeg then
+  // If any was freshly installed, request restart for PATH updates
+  if InstalledPandoc or InstalledFFmpeg or InstalledNode then
     NeedsRestart := True;
  
-  Result := ''; // All good, both are installed
+  Result := ''; // All good, all dependencies are installed
 end;
